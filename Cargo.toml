@@ -1,0 +1,20 @@
+[package]
+name = "clinic-app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+diesel = { version = "2.3.7", features = [
+    "sqlite",
+    "returning_clauses_for_sqlite_3_35",
+] }
+libsqlite3-sys = { version = "0.30", features = ["bundled"] }
+dotenvy = "0.15"
+chrono = { version = "0.4", features = ["serde"] }
+
+# Error handling
+anyhow = "1.0.102"
+thiserror = "2"
+
+# GUI  
+iced = { version = "0.14", features = ["tokio", "canvas", "image"] }
