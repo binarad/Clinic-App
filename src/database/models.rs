@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
-use crate::schema::*;
+use crate::database::schema::*;
 
 #[derive(Queryable, Selectable, Debug)]
 #[diesel(table_name = appointment)]
@@ -15,6 +15,12 @@ pub struct Appointment {
     pub status: Option<String>,
 }
 
+//TODO Add more insertable structs
+// #[derive(Insertable)]
+// pub struct NewAppointment {
+
+// }
+
 #[derive(Queryable, Selectable, Debug)]
 #[diesel(table_name = doctor)]
 pub struct Doctor {
@@ -23,6 +29,7 @@ pub struct Doctor {
     pub office: Option<String>,
 }
 
+// ----------------------------------------
 #[derive(Queryable, Selectable, Debug)]
 #[diesel(table_name = employee)]
 pub struct Employee {
@@ -30,6 +37,15 @@ pub struct Employee {
     pub full_name: String,
     pub phone: Option<String>,
 }
+
+#[derive(Insertable)]
+#[diesel(table_name = employee)]
+pub struct NewEmployee<'a> {
+    pub full_name: &'a String,
+    pub phone: Option<&'a String>,
+}
+
+// ---------------------------------
 
 #[derive(Queryable, Selectable, Debug)]
 #[diesel(table_name = medical_record)]
