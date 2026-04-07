@@ -37,11 +37,7 @@ pub fn show_employees() -> Vec<Employee> {
         .expect("Error loading employees")
 }
 
-pub fn add_employee(
-    conn: &mut SqliteConnection,
-    full_name: &String,
-    phone: Option<&String>,
-) -> Employee {
+pub fn add_employee(conn: &mut SqliteConnection, full_name: &str, phone: Option<&str>) -> Employee {
     use crate::database::schema::employee;
     let new_employee = NewEmployee { full_name, phone };
 

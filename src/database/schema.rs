@@ -2,7 +2,7 @@
 
 diesel::table! {
     appointment (appointment_id) {
-        appointment_id -> Nullable<Integer>,
+        appointment_id -> Integer,
         appointment_date -> Nullable<Timestamp>,
         appointment_time -> Nullable<Text>,
         patient_id -> Integer,
@@ -14,7 +14,7 @@ diesel::table! {
 
 diesel::table! {
     doctor (employee_id) {
-        employee_id -> Nullable<Integer>,
+        employee_id -> Integer,
         specialty -> Text,
         office -> Nullable<Text>,
     }
@@ -22,7 +22,7 @@ diesel::table! {
 
 diesel::table! {
     employee (employee_id) {
-        employee_id -> Nullable<Integer>,
+        employee_id -> Integer,
         full_name -> Text,
         phone -> Nullable<Text>,
     }
@@ -30,7 +30,7 @@ diesel::table! {
 
 diesel::table! {
     medical_record (record_number) {
-        record_number -> Nullable<Integer>,
+        record_number -> Integer,
         creation_date -> Nullable<Timestamp>,
         patient_id -> Integer,
     }
@@ -38,7 +38,7 @@ diesel::table! {
 
 diesel::table! {
     patient (patient_id) {
-        patient_id -> Nullable<Integer>,
+        patient_id -> Integer,
         full_name -> Text,
         birth_date -> Nullable<Timestamp>,
         phone -> Nullable<Text>,
@@ -47,15 +47,8 @@ diesel::table! {
 }
 
 diesel::table! {
-    receptionist (employee_id) {
-        employee_id -> Nullable<Integer>,
-        window_number -> Nullable<Double>,
-    }
-}
-
-diesel::table! {
     record_entry (entry_id) {
-        entry_id -> Nullable<Integer>,
+        entry_id -> Integer,
         record_number -> Integer,
         entry_number -> Nullable<Double>,
         entry_date -> Nullable<Timestamp>,
@@ -66,7 +59,7 @@ diesel::table! {
 
 diesel::table! {
     registry (employee_id) {
-        employee_id -> Nullable<Integer>,
+        employee_id -> Integer,
         window_number -> Nullable<Double>,
     }
 }
@@ -76,7 +69,6 @@ diesel::joinable!(appointment -> patient (patient_id));
 diesel::joinable!(appointment -> registry (registry_id));
 diesel::joinable!(doctor -> employee (employee_id));
 diesel::joinable!(medical_record -> patient (patient_id));
-diesel::joinable!(receptionist -> employee (employee_id));
 diesel::joinable!(registry -> employee (employee_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
@@ -85,7 +77,6 @@ diesel::allow_tables_to_appear_in_same_query!(
     employee,
     medical_record,
     patient,
-    receptionist,
     record_entry,
     registry,
 );
