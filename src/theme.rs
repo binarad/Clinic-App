@@ -44,6 +44,15 @@ pub const STATUS_COMPLETED_TEXT: Color = Color::from_rgb8(21, 128, 61);
 pub const STATUS_NO_SHOW_BG: Color = Color::from_rgb8(254, 226, 226);
 pub const STATUS_NO_SHOW_TEXT: Color = Color::from_rgb8(185, 28, 28);
 
+// ==================================
+//     SEMANTIC COLORS (ROLES)
+// ==================================
+
+pub const ROLE_DOCTOR_BG: Color = Color::from_rgb8(3, 105, 161);
+pub const ROLE_NURSE_BG: Color = Color::from_rgb8(21, 128, 61);
+pub const ROLE_ADMIN_BG: Color = Color::from_rgb8(228, 154, 51);
+pub const ROLE_REGISTRAR_BG: Color = Color::from_rgb8(126, 34, 206);
+
 // =====================
 //     WIDGET STYLES
 // =====================
@@ -107,6 +116,10 @@ pub fn primary_button(_theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
+// =====================
+//     STATUS BADGES
+// =====================
+
 // Style for semantic status badges (e.g., "Completed")
 pub fn badge_completed(_theme: &Theme) -> container::Style {
     container::Style {
@@ -136,6 +149,58 @@ pub fn badge_sheduled(_theme: &Theme) -> container::Style {
     container::Style {
         text_color: Some(STATUS_SCHEDULED_TEXT),
         background: Some(iced::Background::Color(STATUS_SCHEDULED_BG)),
+        border: Border {
+            radius: 12.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+// =====================
+//      ROLE BADGES
+// =====================
+
+pub fn badge_doctor(_theme: &Theme) -> container::Style {
+    container::Style {
+        text_color: Some(CLEAN_WHITE),
+        background: Some(iced::Background::Color(ROLE_DOCTOR_BG)),
+        border: Border {
+            radius: 12.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+pub fn badge_nurse(_theme: &Theme) -> container::Style {
+    container::Style {
+        text_color: Some(CLEAN_WHITE),
+        background: Some(iced::Background::Color(ROLE_NURSE_BG)),
+        border: Border {
+            radius: 12.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+pub fn badge_admin(_theme: &Theme) -> container::Style {
+    container::Style {
+        text_color: Some(CLEAN_WHITE),
+        background: Some(iced::Background::Color(ROLE_ADMIN_BG)),
+        border: Border {
+            radius: 12.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+pub fn badge_registrar(_theme: &Theme) -> container::Style {
+    container::Style {
+        text_color: Some(CLEAN_WHITE),
+        background: Some(iced::Background::Color(ROLE_REGISTRAR_BG)),
         border: Border {
             radius: 12.0.into(),
             ..Default::default()

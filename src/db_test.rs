@@ -34,12 +34,23 @@ pub fn show_employees() -> Vec<Employee> {
         .limit(5)
         .select(Employee::as_select())
         .load(connection)
-        .expect("Error loading employees")
+        .expect("Error loading employee")
 }
 
-pub fn add_employee(conn: &mut SqliteConnection, full_name: &str, phone: Option<&str>) -> Employee {
+pub fn add_employee(
+    conn: &mut SqliteConnection,
+    full_name: &str,
+    phone: Option<&str>,
+    role: &str,
+    email: Option<&str>,
+) -> Employee {
     use crate::database::schema::employee;
-    let new_employee = NewEmployee { full_name, phone };
+    let new_employee = NewEmployee {
+        full_name,
+        phone,
+        role,
+        email,
+    };
 
     diesel::insert_into(employee::table)
         .values(&new_employee)

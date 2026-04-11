@@ -25,6 +25,8 @@ diesel::table! {
         employee_id -> Integer,
         full_name -> Text,
         phone -> Nullable<Text>,
+        role -> Text,
+        email -> Nullable<Text>,
     }
 }
 

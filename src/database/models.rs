@@ -33,17 +33,21 @@ pub struct NewPatient<'a> {
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 #[diesel(table_name = employee)]
 pub struct Employee {
-    pub employee_id: i32,  // PK, never null
+    pub employee_id: i32, // PK, never null
+    pub role: String,
     pub full_name: String, // NOT NULL
     pub phone: Option<String>,
+    pub email: Option<String>,
 }
 
 #[derive(Insertable)]
 #[diesel(table_name = employee)]
 pub struct NewEmployee<'a> {
     // employee_id omitted (AUTOINCREMENT)
+    pub role: &'a str,
     pub full_name: &'a str,
     pub phone: Option<&'a str>,
+    pub email: Option<&'a str>,
 }
 
 // ----------------------------------------

@@ -18,7 +18,7 @@ pub enum Message {
 
 pub fn view(active_tab: &Tab) -> Element<'_, Message> {
     let tabs = [
-        (Tab::Dashboard, "Home Dashboard"),
+        (Tab::Dashboard, "Dashboard"),
         (Tab::Patients, "Patients"),
         (Tab::Employees, "Employees"),
         (Tab::Appointments, "Appointments"),

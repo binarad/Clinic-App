@@ -5,6 +5,8 @@ use crate::components::sidebar::{self, Tab};
 use crate::database::models::Employee;
 // use crate::database::schema::employee::full_name;
 use crate::db_test::{add_employee, establish_connection, show_employees};
+use crate::views::employees::EmployeesMessage;
+// use crate::views;
 
 // TODO: Move all mods to lib.rs
 pub mod db_test;
@@ -16,8 +18,9 @@ pub mod views;
 
 #[derive(Debug, Clone)]
 enum Message {
-    SidebarMessage(sidebar::Message),
-    AddEmployee(String, Option<String>),
+    Sidebar(sidebar::Message),
+    AddEmployee(String, Option<String>, String, Option<String>),
+    EmployeeView(EmployeesMessage),
 }
 
 struct ClinicApp {
@@ -35,13 +38,13 @@ impl ClinicApp {
 
     fn update(&mut self, message: Message) -> iced::Task<Message> {
         match message {
-            Message::SidebarMessage(sidebar::Message::SelectedTab(new_tab)) => {
+            Message::Sidebar(sidebar::Message::SelectedTab(new_tab)) => {
                 self.active_tab = new_tab;
             }
-            Message::AddEmployee(full_name, phone) => {
+            Message::AddEmployee(full_name, phone, role, email) => {
                 let conn = &mut establish_connection();
                 // TODO
-                add_employee(conn, &full_name, phone.as_deref());
+                add_employee(conn, &full_name, phone.as_deref(), &role, email.as_deref());
             }
         }
 
@@ -50,14 +53,15 @@ impl ClinicApp {
 
     fn view(&self) -> iced::Element<'_, Message> {
         // Render the sidebar and map its local messages up to the global Message enum
-        let sidebar_view = sidebar::view(&self.active_tab).map(Message::SidebarMessage);
+        let sidebar_view = sidebar::view(&self.active_tab).map(Message::Sidebar);
 
         // Render the main content area dynamically based on the active tab
         let content_view: Element<Message> = match self.active_tab {
             Tab::Dashboard => text("Dashboard View").size(30).into(),
             Tab::Patients => text("Patients View").size(30).into(),
             // Tab::Employees => employees_list(&self.employees),
-            Tab::Employees => employees_table(&self.employees),
+            Tab::Employees => views::employees::view(&self.employees).map(Message::EmployeeView),
+            // Tab::Employees => employees_table(&self.employees),
             // Tab::Employees => widget::text("Employees View").size(30).into(),
             Tab::Appointments => text("Appointments View").size(30).into(),
             Tab::Registry => text("Registry View").size(30).into(),
@@ -109,69 +113,7 @@ where
     // fullname_column = fullname_column.push(btn);
     container(fullname_column)
         .padding(20)
+        // .height(Length::Fill)
         .style(theme::white_card)
         .into()
-}
-
-pub fn employees_table<'a>(employees: &'a [Employee]) -> Element<'a, Message> {
-    // 1. Define the Columns
-    let columns = vec![
-        // Column 1: ID
-        table::column(
-            text("ID").font(Font {
-                weight: iced::font::Weight::Bold,
-                ..Default::default()
-            }),
-            |employee: &Employee| -> Element<'_, Message> {
-                Element::from(text(employee.employee_id.to_string()))
-            },
-        )
-        .width(Length::Fixed(50.0)),
-        // Column 2: Full Name
-        table::column(
-            text("Full Name").font(Font {
-                weight: iced::font::Weight::Bold,
-                ..Default::default()
-            }),
-            |employee: &Employee| -> Element<'_, Message> {
-                Element::from(text(&employee.full_name))
-            },
-        )
-        .width(Length::FillPortion(2)),
-        // Column 3: Phone
-        table::column(
-            text("Phone").font(Font {
-                weight: iced::font::Weight::Bold,
-                ..Default::default()
-            }),
-            |employee: &Employee| -> Element<'_, Message> {
-                let phone_text = employee.phone.as_deref().unwrap_or("N/A");
-                Element::from(text(phone_text))
-            },
-        )
-        .width(Length::FillPortion(2)),
-        // Column 4: Actions (The buttons on the right)
-        table::column(
-            text("Actions").font(Font {
-                weight: iced::font::Weight::Bold,
-                ..Default::default()
-            }),
-            |employee: &Employee| -> Element<'_, Message> {
-                let edit_btn = button("Edit");
-                let delete_btn = button("Delete");
-
-                row![edit_btn, delete_btn].spacing(5).into()
-            },
-        )
-        .width(Length::Fixed(150.0)),
-    ];
-
-    // 2. Build the actual table using the columns and the raw data rows
-    let data_table = table(columns, employees)
-        .padding(10.0)
-        .separator_y(1.0)
-        .separator_x(0.0);
-
-    // Wrap it in a container for styling
-    container(data_table).width(Length::Fill).into()
 }
