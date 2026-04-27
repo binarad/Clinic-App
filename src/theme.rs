@@ -1,5 +1,5 @@
 use iced::widget::{button, container};
-use iced::{Border, Color, Theme};
+use iced::{Background, Border, Color, Theme};
 
 // ======================
 //     PRIMARY COLORS
@@ -116,6 +116,50 @@ pub fn primary_button(_theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
+pub fn secondary_button(_theme: &Theme, status: button::Status) -> button::Style {
+    match status {
+        button::Status::Active => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.95, 0.95, 0.95))), // Very light gray
+            text_color: Color::from_rgb(0.3, 0.3, 0.3), // Dark charcoal text
+            border: Border {
+                color: Color::from_rgb(0.85, 0.85, 0.85),
+                width: 1.0,
+                radius: 6.0.into(), // Matches a slightly rounded, modern look
+            },
+            ..button::Style::default()
+        },
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.90, 0.90, 0.90))), // Slightly darker gray
+            text_color: Color::BLACK,
+            border: Border {
+                color: Color::from_rgb(0.75, 0.75, 0.75),
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            ..button::Style::default()
+        },
+        button::Status::Pressed => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.85, 0.85, 0.85))), // Darkest gray for click
+            text_color: Color::BLACK,
+            border: Border {
+                color: Color::from_rgb(0.70, 0.70, 0.70),
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            ..button::Style::default()
+        },
+        button::Status::Disabled => button::Style {
+            background: Some(Background::Color(Color::from_rgb(0.98, 0.98, 0.98))),
+            text_color: Color::from_rgb(0.7, 0.7, 0.7),
+            border: Border {
+                color: Color::from_rgb(0.95, 0.95, 0.95),
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            ..button::Style::default()
+        },
+    }
+}
 // =====================
 //     STATUS BADGES
 // =====================

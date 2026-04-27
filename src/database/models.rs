@@ -29,7 +29,7 @@ pub struct NewPatient<'a> {
 // ----------------------------------------
 // EMPLOYEE
 // ----------------------------------------
-#[derive(Queryable, Selectable, Debug)]
+#[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 #[diesel(table_name = employee)]
 pub struct Employee {
