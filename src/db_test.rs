@@ -17,19 +17,6 @@ pub fn show_employees() -> Vec<Employee> {
 
     let connection = &mut establish_connection();
 
-    // let results = employee
-    //     .limit(5)
-    //     .select(Employee::as_select())
-    //     .load(connection)
-    //     .expect("Error loading employees");
-    // println!("Displaying employees");
-    // for employeee in results {
-    //     println!("ID: {}", employeee.employee_id.unwrap());
-    //     println!("-------------------\n");
-    //     println!("Full Name: {}", employeee.full_name);
-    //     println!("Phone: {}", employeee.phone.unwrap());
-    // }
-
     employee
         .limit(5)
         .select(Employee::as_select())

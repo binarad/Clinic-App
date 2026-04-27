@@ -3,6 +3,7 @@ use iced::{Element, Length};
 
 use crate::components::sidebar::{self, Tab};
 use crate::database::models::Employee;
+use crate::database::operations::insert_employee_db;
 // use crate::database::schema::employee::full_name;
 use crate::db_test::{add_employee, establish_connection, show_employees};
 use crate::views::employees::{self, EmployeesMessage};
@@ -107,6 +108,56 @@ impl ClinicApp {
 
                 EmployeesMessage::CloseAddForm => {
                     self.active_modal = None;
+                }
+
+                EmployeesMessage::SubmitForm => {
+                    // Extract the data from the modal state
+                    if let Some(ActiveModal::AddEmployee {
+                        draft_name,
+                        draft_phone,
+                        draft_email,
+                        draft_role,
+                    }) = &self.active_modal
+                    {
+                        // Basic Validation: Ensure they picked a role and entered a name
+                        if draft_name.trim().is_empty() || draft_role.is_none() {
+                            println!("Validation failed: Name and Role are required.");
+                            return iced::Task::none(); // You could show a UI error here instead
+                        }
+
+                        // Clone the strings to send them to the background thread
+                        let role = draft_role.clone().unwrap();
+                        let name = draft_name.clone();
+                        let phone = draft_phone.clone();
+                        let email = draft_email.clone();
+
+                        // Lock the UI
+                        self.is_saving = true;
+
+                        // Tell Iced to run the DB function and return the EmployeeAdded message when done
+                        return iced::Task::perform(
+                            insert_employee_db(role, name, phone, email),
+                            |result| Message::EmployeeView(EmployeesMessage::EmployeeAdded(result)),
+                        );
+                    }
+                }
+
+                EmployeesMessage::EmployeeAdded(result) => {
+                    self.is_saving = false; // Unlock the UI
+
+                    match result {
+                        Ok(new_employee) => {
+                            // Success! Add it to our local list so the table updates
+                            self.employees.push(new_employee);
+                            // Close the modal, which clears the draft data automatically
+                            self.active_modal = None;
+                        }
+                        Err(e) => {
+                            // DB failed (e.g. unique constraint error)
+                            println!("Failed to add employee: {}", e);
+                            // The modal stays open so they can fix their mistake
+                        }
+                    }
                 }
 
                 _ => {}
