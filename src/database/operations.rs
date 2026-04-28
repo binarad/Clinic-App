@@ -5,6 +5,7 @@ use diesel::prelude::*;
 use dotenvy::dotenv;
 use std::env;
 use tokio;
+
 pub async fn insert_employee_db(
     role: String,
     full_name: String,
@@ -42,6 +43,18 @@ pub async fn insert_employee_db(
     })
     .await
     .map_err(|e| format!("Task panicked: {}", e))?
+}
+
+pub fn fetch_employees_db() -> Vec<Employee> {
+    use crate::database::schema::employee::dsl::*;
+
+    let connection = &mut establish_connection();
+
+    employee
+        .limit(15)
+        .select(Employee::as_select())
+        .load(connection)
+        .expect("Error loading employee")
 }
 
 pub fn establish_connection() -> SqliteConnection {

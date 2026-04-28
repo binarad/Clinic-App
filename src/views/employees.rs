@@ -190,6 +190,8 @@ pub fn employees_table<'a>(employees: &'a [Employee]) -> Element<'a, EmployeesMe
 // =================
 // ADD EMPLOYEE FORM
 // =================
+
+// TODO ADD VALIDATION TO THE FORM FIELDS
 pub fn add_employee_form<'a>(
     draft_name: &str,
     draft_phone: &str,
@@ -252,6 +254,7 @@ pub fn add_employee_form<'a>(
 
     container(form_content)
         .width(Length::Fill)
+        .height(Length::Fill)
         .padding(30)
         .style(theme::main_background)
         .into()

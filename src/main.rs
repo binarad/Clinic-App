@@ -3,14 +3,10 @@ use iced::{Element, Length};
 
 use crate::components::sidebar::{self, Tab};
 use crate::database::models::Employee;
-use crate::database::operations::insert_employee_db;
-// use crate::database::schema::employee::full_name;
-use crate::db_test::{add_employee, establish_connection, show_employees};
+use crate::database::operations::{fetch_employees_db, insert_employee_db};
 use crate::views::employees::{self, EmployeesMessage};
-// use crate::views;
 
 // TODO: Move all mods to lib.rs
-pub mod db_test;
 pub mod theme;
 
 pub mod components;
@@ -30,9 +26,8 @@ pub enum ActiveModal {
 #[derive(Debug, Clone)]
 enum Message {
     Sidebar(sidebar::Message),
-    AddEmployee(String, Option<String>, String, Option<String>),
     EmployeeView(EmployeesMessage),
-    CloseModal,
+    // CloseModal,
 }
 
 pub struct ClinicApp {
@@ -45,7 +40,7 @@ pub struct ClinicApp {
 impl ClinicApp {
     fn new() -> Self {
         Self {
-            employees: show_employees(),
+            employees: fetch_employees_db(),
             active_tab: Tab::Dashboard,
             active_modal: None,
             is_saving: false,
@@ -57,12 +52,6 @@ impl ClinicApp {
             Message::Sidebar(sidebar::Message::SelectedTab(new_tab)) => {
                 self.active_tab = new_tab;
             }
-            Message::AddEmployee(full_name, phone, role, email) => {
-                let conn = &mut establish_connection();
-                // TODO
-                add_employee(conn, &full_name, phone.as_deref(), &role, email.as_deref());
-            }
-
             Message::EmployeeView(employee_msg) => match employee_msg {
                 EmployeesMessage::OpenAddForm => {
                     self.active_modal = Some(ActiveModal::AddEmployee {
@@ -159,12 +148,10 @@ impl ClinicApp {
                         }
                     }
                 }
-
-                _ => {}
             },
-            Message::CloseModal => {
-                self.active_modal = None;
-            }
+            // Message::CloseModal => {
+            //     self.active_modal = None;
+            // }
         }
 
         iced::Task::none()
@@ -199,10 +186,7 @@ impl ClinicApp {
         let content_view: Element<Message> = match self.active_tab {
             Tab::Dashboard => text("Dashboard View").size(30).into(),
             Tab::Patients => text("Patients View").size(30).into(),
-            // Tab::Employees => employees_list(&self.employees),
             Tab::Employees => views::employees::view(&self.employees).map(Message::EmployeeView),
-            // Tab::Employees => employees_table(&self.employees),
-            // Tab::Employees => widget::text("Employees View").size(30).into(),
             Tab::Appointments => text("Appointments View").size(30).into(),
             Tab::Registry => text("Registry View").size(30).into(),
         };
