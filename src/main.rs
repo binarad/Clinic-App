@@ -149,9 +149,6 @@ impl ClinicApp {
                     }
                 }
             },
-            // Message::CloseModal => {
-            //     self.active_modal = None;
-            // }
         }
 
         iced::Task::none()
