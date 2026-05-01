@@ -57,6 +57,45 @@ pub fn fetch_employees_db() -> Vec<Employee> {
         .expect("Error loading employee")
 }
 
+pub async fn update_employee_db(
+    target_id: i32,
+    new_role: String,
+    new_full_name: String,
+    new_phone: String,
+    new_email: String,
+) -> Result<Employee, String> {
+    tokio::task::spawn_blocking(move || {
+        use crate::database::schema::employee::dsl::*;
+
+        let conn = &mut establish_connection();
+
+        // Format optional fields
+        let phone_opt = if new_phone.trim().is_empty() {
+            None
+        } else {
+            Some(new_phone.as_str())
+        };
+        let email_opt = if new_email.trim().is_empty() {
+            None
+        } else {
+            Some(new_email.as_str())
+        };
+
+        // Run the update query
+        diesel::update(employee.filter(employee_id.eq(target_id)))
+            .set((
+                role.eq(&new_role),
+                full_name.eq(&new_full_name),
+                phone.eq(phone_opt),
+                email.eq(email_opt),
+            ))
+            .returning(Employee::as_select()) // Return the newly updated row
+            .get_result(conn)
+            .map_err(|e| format!("Database update failed: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task panicked: {}", e))?
+}
 pub async fn delete_employee(target_id: i32) -> Result<usize, String> {
     // Push the heavy database work to a background thread
     tokio::task::spawn_blocking(move || {

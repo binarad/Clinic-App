@@ -3,7 +3,9 @@ use iced::{Element, Length};
 
 use crate::components::sidebar::{self, Tab};
 use crate::database::models::Employee;
-use crate::database::operations::{delete_employee, fetch_employees_db, insert_employee_db};
+use crate::database::operations::{
+    delete_employee, fetch_employees_db, insert_employee_db, update_employee_db,
+};
 use crate::views::employees::{self, EmployeesMessage};
 
 // TODO: Move all mods to lib.rs
@@ -16,6 +18,14 @@ pub mod views;
 #[derive(Debug, Clone)]
 pub enum ActiveModal {
     AddEmployee {
+        draft_name: String,
+        draft_phone: String,
+        draft_email: String,
+        draft_role: Option<String>,
+    },
+
+    EditEmployee {
+        target_id: i32,
         draft_name: String,
         draft_phone: String,
         draft_email: String,
@@ -53,6 +63,16 @@ impl ClinicApp {
                 self.active_tab = new_tab;
             }
             Message::EmployeeView(employee_msg) => match employee_msg {
+                EmployeesMessage::OpenEditForm(emp) => {
+                    self.active_modal = Some(ActiveModal::EditEmployee {
+                        target_id: emp.employee_id,
+                        draft_name: emp.full_name,
+                        draft_phone: emp.phone.unwrap_or_default(),
+                        draft_email: emp.email.unwrap_or_default(),
+                        draft_role: Some(emp.role),
+                    });
+                }
+
                 EmployeesMessage::DeleteEmployee(id) => {
                     return iced::Task::perform(delete_employee(id), move |result| {
                         Message::EmployeeView(EmployeesMessage::DeletedEmployee(result, id))
@@ -71,6 +91,7 @@ impl ClinicApp {
                         }
                     }
                 }
+
                 EmployeesMessage::OpenAddForm => {
                     self.active_modal = Some(ActiveModal::AddEmployee {
                         draft_name: String::new(),
@@ -79,10 +100,13 @@ impl ClinicApp {
                         draft_role: None,
                     });
                 }
+
                 EmployeesMessage::RoleSelected(new_role) => {
                     // Check if the AddEmployee modal is currently open
-                    if let Some(ActiveModal::AddEmployee { draft_role, .. }) =
-                        &mut self.active_modal
+                    if let Some(
+                        ActiveModal::AddEmployee { draft_role, .. }
+                        | ActiveModal::EditEmployee { draft_role, .. },
+                    ) = &mut self.active_modal
                     {
                         // Update the state!
                         *draft_role = Some(new_role);
@@ -90,24 +114,30 @@ impl ClinicApp {
                 }
 
                 EmployeesMessage::NameChanged(new_name) => {
-                    if let Some(ActiveModal::AddEmployee { draft_name, .. }) =
-                        &mut self.active_modal
+                    if let Some(
+                        ActiveModal::AddEmployee { draft_name, .. }
+                        | ActiveModal::EditEmployee { draft_name, .. },
+                    ) = &mut self.active_modal
                     {
                         *draft_name = new_name;
                     }
                 }
 
                 EmployeesMessage::PhoneChanged(new_phone) => {
-                    if let Some(ActiveModal::AddEmployee { draft_phone, .. }) =
-                        &mut self.active_modal
+                    if let Some(
+                        ActiveModal::AddEmployee { draft_phone, .. }
+                        | ActiveModal::EditEmployee { draft_phone, .. },
+                    ) = &mut self.active_modal
                     {
                         *draft_phone = new_phone;
                     }
                 }
 
                 EmployeesMessage::EmailChanged(new_email) => {
-                    if let Some(ActiveModal::AddEmployee { draft_email, .. }) =
-                        &mut self.active_modal
+                    if let Some(
+                        ActiveModal::AddEmployee { draft_email, .. }
+                        | ActiveModal::EditEmployee { draft_email, .. },
+                    ) = &mut self.active_modal
                     {
                         *draft_email = new_email;
                     }
@@ -147,8 +177,54 @@ impl ClinicApp {
                             |result| Message::EmployeeView(EmployeesMessage::EmployeeAdded(result)),
                         );
                     }
+
+                    if let Some(ActiveModal::EditEmployee {
+                        target_id,
+                        draft_name,
+                        draft_phone,
+                        draft_email,
+                        draft_role,
+                    }) = &self.active_modal
+                    {
+                        if draft_name.trim().is_empty() || draft_role.is_none() {
+                            return iced::Task::none();
+                        }
+
+                        let id = *target_id;
+                        let role = draft_role.clone().unwrap();
+                        let name = draft_name.clone();
+                        let phone = draft_phone.clone();
+                        let email = draft_email.clone();
+
+                        self.is_saving = true;
+
+                        return iced::Task::perform(
+                            update_employee_db(id, role, name, phone, email),
+                            |result| {
+                                Message::EmployeeView(EmployeesMessage::EmployeeUpdated(result))
+                            },
+                        );
+                    }
                 }
 
+                EmployeesMessage::EmployeeUpdated(result) => {
+                    self.is_saving = false;
+
+                    match result {
+                        Ok(updated_employee) => {
+                            // Find the old employee in the vector and replace it with the new one
+                            if let Some(index) = self
+                                .employees
+                                .iter()
+                                .position(|e| e.employee_id == updated_employee.employee_id)
+                            {
+                                self.employees[index] = updated_employee;
+                            }
+                            self.active_modal = None
+                        }
+                        Err(e) => println!("Failed to update: {}", e),
+                    }
+                }
                 EmployeesMessage::EmployeeAdded(result) => {
                     self.is_saving = false; // Unlock the UI
 
@@ -183,8 +259,15 @@ impl ClinicApp {
                     draft_phone,
                     draft_email,
                     draft_role,
+                }
+                | ActiveModal::EditEmployee {
+                    draft_name,
+                    draft_phone,
+                    draft_email,
+                    draft_role,
+                    ..
                 } => {
-                    let form_container = container(employees::add_employee_form(
+                    let employee_form = container(employees::add_employee_form(
                         draft_name,
                         draft_phone,
                         draft_email,
@@ -193,7 +276,7 @@ impl ClinicApp {
                     .width(Length::Fill)
                     .height(Length::Fill);
 
-                    return Element::from(form_container).map(Message::EmployeeView);
+                    return Element::from(employee_form).map(Message::EmployeeView);
                 }
             }
         }

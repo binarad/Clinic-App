@@ -8,6 +8,8 @@ use crate::database::models::Employee;
 pub enum EmployeesMessage {
     OpenAddForm,
     CloseAddForm,
+    OpenEditForm(Employee),
+    EmployeeUpdated(Result<Employee, String>),
     DeleteEmployee(i32),
 
     // Form inputs
@@ -25,7 +27,6 @@ pub enum EmployeesMessage {
 const ROLES: &[&str] = &["Doctor", "Nurse", "Admin", "Registrar"];
 
 pub fn view<'a>(employees: &'a [Employee]) -> Element<'a, EmployeesMessage> {
-    // let mut employees_page = column!().spacing(10.0).padding(20.0);
     let header = row![text("Employees").color(theme::NAVY_SLATE).size(30.0)]
         .align_y(Alignment::Center)
         .width(Length::Fill);
@@ -148,8 +149,11 @@ pub fn employees_table<'a>(employees: &'a [Employee]) -> Element<'a, EmployeesMe
                 ..Default::default()
             }),
             |employee: &Employee| -> Element<'_, EmployeesMessage> {
-                let edit_btn = button("Edit"); // TODO: add on_press action for buttons
+                let edit_btn = button("Edit")
+                    .style(theme::primary_button)
+                    .on_press(EmployeesMessage::OpenEditForm(employee.clone())); // TODO: add on_press action for buttons
                 let delete_btn = button("Delete")
+                    .style(theme::secondary_button)
                     .on_press(EmployeesMessage::DeleteEmployee(employee.employee_id));
 
                 row![edit_btn, delete_btn].spacing(5).into()
