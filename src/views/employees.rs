@@ -5,22 +5,27 @@ use iced::{Alignment, Element, Font, Length};
 use crate::database::models::Employee;
 
 #[derive(Debug, Clone)]
+pub enum FormField {
+    Name,
+    Phone,
+    Email,
+    Role,
+}
+
+#[derive(Debug, Clone)]
 pub enum EmployeesMessage {
     OpenAddForm,
-    CloseAddForm,
     OpenEditForm(Employee),
-    EmployeeUpdated(Result<Employee, String>),
-    DeleteEmployee(i32),
+    CloseAddForm,
 
     // Form inputs
-    NameChanged(String),
-    PhoneChanged(String),
-    EmailChanged(String),
-    RoleSelected(String),
+    FieldChanged(FormField, String),
 
     // Async Actions
     SubmitForm,
+    DeleteEmployee(i32),
     EmployeeAdded(Result<Employee, String>),
+    EmployeeUpdated(Result<Employee, String>),
     DeletedEmployee(Result<usize, String>, i32),
 }
 
@@ -203,19 +208,19 @@ pub fn add_employee_form<'a>(
     let title = text("Add New Employee").size(24);
 
     let name_input = text_input("Full Name", draft_name)
-        .on_input(EmployeesMessage::NameChanged)
+        .on_input(|value| EmployeesMessage::FieldChanged(FormField::Name, value))
         .padding(10);
 
     let phone_input = text_input("Phone Number", draft_phone)
-        .on_input(EmployeesMessage::PhoneChanged)
+        .on_input(|value| EmployeesMessage::FieldChanged(FormField::Phone, value))
         .padding(10);
 
     let email_input = text_input("Email Address", draft_email)
-        .on_input(EmployeesMessage::EmailChanged)
+        .on_input(|value| EmployeesMessage::FieldChanged(FormField::Email, value))
         .padding(10);
 
     let role_dropdown = pick_list(ROLES, selected_role, |role| {
-        EmployeesMessage::RoleSelected(role.to_string())
+        EmployeesMessage::FieldChanged(FormField::Role, role.to_string())
     })
     .placeholder("Select a Role")
     .padding(10)

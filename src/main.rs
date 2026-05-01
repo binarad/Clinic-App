@@ -6,7 +6,7 @@ use crate::database::models::Employee;
 use crate::database::operations::{
     delete_employee, fetch_employees_db, insert_employee_db, update_employee_db,
 };
-use crate::views::employees::{self, EmployeesMessage};
+use crate::views::employees::{EmployeesMessage, FormField, add_employee_form};
 
 // TODO: Move all mods to lib.rs
 pub mod theme;
@@ -15,21 +15,21 @@ pub mod components;
 pub mod database;
 pub mod views;
 
+#[derive(Debug, Clone, Default)]
+pub struct DraftEmployee {
+    pub name: String,
+    pub phone: String,
+    pub email: String,
+    pub role: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub enum ActiveModal {
-    AddEmployee {
-        draft_name: String,
-        draft_phone: String,
-        draft_email: String,
-        draft_role: Option<String>,
-    },
+    AddEmployee(DraftEmployee),
 
     EditEmployee {
         target_id: i32,
-        draft_name: String,
-        draft_phone: String,
-        draft_email: String,
-        draft_role: Option<String>,
+        draft: DraftEmployee,
     },
 }
 
@@ -63,14 +63,22 @@ impl ClinicApp {
                 self.active_tab = new_tab;
             }
             Message::EmployeeView(employee_msg) => match employee_msg {
-                EmployeesMessage::OpenEditForm(emp) => {
-                    self.active_modal = Some(ActiveModal::EditEmployee {
-                        target_id: emp.employee_id,
-                        draft_name: emp.full_name,
-                        draft_phone: emp.phone.unwrap_or_default(),
-                        draft_email: emp.email.unwrap_or_default(),
-                        draft_role: Some(emp.role),
-                    });
+                EmployeesMessage::FieldChanged(field, new_value) => {
+                    // Mutable reference to the draft whether we are adding or editing
+                    let draft = match &mut self.active_modal {
+                        Some(ActiveModal::AddEmployee(draft)) => draft,
+                        Some(ActiveModal::EditEmployee { draft, .. }) => draft,
+                        None => return iced::Task::none(),
+                    };
+
+                    match field {
+                        FormField::Name => draft.name = new_value,
+                        FormField::Phone => draft.phone = new_value,
+                        FormField::Email => draft.email = new_value,
+                        FormField::Role => draft.role = Some(new_value),
+                    }
+
+                    return iced::Task::none();
                 }
 
                 EmployeesMessage::DeleteEmployee(id) => {
@@ -93,54 +101,19 @@ impl ClinicApp {
                 }
 
                 EmployeesMessage::OpenAddForm => {
-                    self.active_modal = Some(ActiveModal::AddEmployee {
-                        draft_name: String::new(),
-                        draft_phone: String::new(),
-                        draft_email: String::new(),
-                        draft_role: None,
+                    self.active_modal = Some(ActiveModal::AddEmployee(DraftEmployee::default()));
+                }
+
+                EmployeesMessage::OpenEditForm(emp) => {
+                    self.active_modal = Some(ActiveModal::EditEmployee {
+                        target_id: emp.employee_id,
+                        draft: DraftEmployee {
+                            name: emp.full_name,
+                            phone: emp.phone.unwrap_or_default(),
+                            email: emp.email.unwrap_or_default(),
+                            role: Some(emp.role),
+                        },
                     });
-                }
-
-                EmployeesMessage::RoleSelected(new_role) => {
-                    // Check if the AddEmployee modal is currently open
-                    if let Some(
-                        ActiveModal::AddEmployee { draft_role, .. }
-                        | ActiveModal::EditEmployee { draft_role, .. },
-                    ) = &mut self.active_modal
-                    {
-                        // Update the state!
-                        *draft_role = Some(new_role);
-                    }
-                }
-
-                EmployeesMessage::NameChanged(new_name) => {
-                    if let Some(
-                        ActiveModal::AddEmployee { draft_name, .. }
-                        | ActiveModal::EditEmployee { draft_name, .. },
-                    ) = &mut self.active_modal
-                    {
-                        *draft_name = new_name;
-                    }
-                }
-
-                EmployeesMessage::PhoneChanged(new_phone) => {
-                    if let Some(
-                        ActiveModal::AddEmployee { draft_phone, .. }
-                        | ActiveModal::EditEmployee { draft_phone, .. },
-                    ) = &mut self.active_modal
-                    {
-                        *draft_phone = new_phone;
-                    }
-                }
-
-                EmployeesMessage::EmailChanged(new_email) => {
-                    if let Some(
-                        ActiveModal::AddEmployee { draft_email, .. }
-                        | ActiveModal::EditEmployee { draft_email, .. },
-                    ) = &mut self.active_modal
-                    {
-                        *draft_email = new_email;
-                    }
                 }
 
                 EmployeesMessage::CloseAddForm => {
@@ -149,61 +122,54 @@ impl ClinicApp {
 
                 EmployeesMessage::SubmitForm => {
                     // Extract the data from the modal state
-                    if let Some(ActiveModal::AddEmployee {
-                        draft_name,
-                        draft_phone,
-                        draft_email,
-                        draft_role,
-                    }) = &self.active_modal
-                    {
-                        // Basic Validation: Ensure they picked a role and entered a name
-                        if draft_name.trim().is_empty() || draft_role.is_none() {
-                            println!("Validation failed: Name and Role are required.");
-                            return iced::Task::none(); // You could show a UI error here instead
+                    match &self.active_modal {
+                        Some(ActiveModal::AddEmployee(draft)) => {
+                            // Basic Validation: Ensure they picked a role and entered a name
+                            if draft.name.trim().is_empty() || draft.role.is_none() {
+                                println!("Validation failed: Name and Role are required.");
+                                return iced::Task::none(); // You could show a UI error here instead
+                            }
+
+                            // Clone the strings to send them to the background thread
+                            let role = draft.role.clone().unwrap();
+                            let name = draft.name.clone();
+                            let phone = draft.phone.clone();
+                            let email = draft.email.clone();
+
+                            // Lock the UI
+                            self.is_saving = true;
+
+                            // Tell Iced to run the DB function and return the EmployeeAdded message when done
+                            return iced::Task::perform(
+                                insert_employee_db(role, name, phone, email),
+                                |result| {
+                                    Message::EmployeeView(EmployeesMessage::EmployeeAdded(result))
+                                },
+                            );
                         }
 
-                        // Clone the strings to send them to the background thread
-                        let role = draft_role.clone().unwrap();
-                        let name = draft_name.clone();
-                        let phone = draft_phone.clone();
-                        let email = draft_email.clone();
+                        Some(ActiveModal::EditEmployee { target_id, draft }) => {
+                            if draft.name.trim().is_empty() || draft.role.is_none() {
+                                return iced::Task::none();
+                            }
 
-                        // Lock the UI
-                        self.is_saving = true;
+                            let id = *target_id;
+                            let role = draft.role.clone().unwrap();
+                            let name = draft.name.clone();
+                            let phone = draft.phone.clone();
+                            let email = draft.email.clone();
 
-                        // Tell Iced to run the DB function and return the EmployeeAdded message when done
-                        return iced::Task::perform(
-                            insert_employee_db(role, name, phone, email),
-                            |result| Message::EmployeeView(EmployeesMessage::EmployeeAdded(result)),
-                        );
-                    }
+                            self.is_saving = true;
 
-                    if let Some(ActiveModal::EditEmployee {
-                        target_id,
-                        draft_name,
-                        draft_phone,
-                        draft_email,
-                        draft_role,
-                    }) = &self.active_modal
-                    {
-                        if draft_name.trim().is_empty() || draft_role.is_none() {
-                            return iced::Task::none();
+                            return iced::Task::perform(
+                                update_employee_db(id, role, name, phone, email),
+                                |result| {
+                                    Message::EmployeeView(EmployeesMessage::EmployeeUpdated(result))
+                                },
+                            );
                         }
 
-                        let id = *target_id;
-                        let role = draft_role.clone().unwrap();
-                        let name = draft_name.clone();
-                        let phone = draft_phone.clone();
-                        let email = draft_email.clone();
-
-                        self.is_saving = true;
-
-                        return iced::Task::perform(
-                            update_employee_db(id, role, name, phone, email),
-                            |result| {
-                                Message::EmployeeView(EmployeesMessage::EmployeeUpdated(result))
-                            },
-                        );
+                        None => return iced::Task::none(),
                     }
                 }
 
@@ -253,33 +219,23 @@ impl ClinicApp {
         let sidebar_view = sidebar::view(&self.active_tab).map(Message::Sidebar);
         // 1. Check if a Modal is open. If so, render the form and map its messages.
         if let Some(modal) = &self.active_modal {
-            match modal {
-                ActiveModal::AddEmployee {
-                    draft_name,
-                    draft_phone,
-                    draft_email,
-                    draft_role,
-                }
-                | ActiveModal::EditEmployee {
-                    draft_name,
-                    draft_phone,
-                    draft_email,
-                    draft_role,
-                    ..
-                } => {
-                    let employee_form = container(employees::add_employee_form(
-                        draft_name,
-                        draft_phone,
-                        draft_email,
-                        draft_role.as_deref(),
-                    ))
-                    .width(Length::Fill)
-                    .height(Length::Fill);
+            let draft = match modal {
+                ActiveModal::AddEmployee(d) => d,
+                ActiveModal::EditEmployee { draft: d, .. } => d,
+            };
 
-                    return Element::from(employee_form).map(Message::EmployeeView);
-                }
-            }
+            let employee_form = container(add_employee_form(
+                &draft.name,
+                &draft.phone,
+                &draft.email,
+                draft.role.as_deref(),
+            ))
+            .width(Length::Fill)
+            .height(Length::Fill);
+
+            return Element::from(employee_form).map(Message::EmployeeView);
         }
+
         // Render the main content area dynamically based on the active tab
         let content_view: Element<Message> = match self.active_tab {
             Tab::Dashboard => text("Dashboard View").size(30).into(),
