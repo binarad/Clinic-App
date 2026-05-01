@@ -57,6 +57,24 @@ pub fn fetch_employees_db() -> Vec<Employee> {
         .expect("Error loading employee")
 }
 
+pub async fn delete_employee(target_id: i32) -> Result<usize, String> {
+    // Push the heavy database work to a background thread
+    tokio::task::spawn_blocking(move || {
+        use crate::database::schema::employee::dsl::*;
+
+        // Establish the connection
+        let conn = &mut establish_connection();
+
+        // Run your exact delete query, but use map_err instead of expect
+        // so it doesn't crash the whole app if the database is locked
+        diesel::delete(employee.filter(employee_id.eq(target_id)))
+            .execute(conn)
+            .map_err(|e| format!("Error deleting employee: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Error deleting employee: {}", e))?
+}
+
 pub fn establish_connection() -> SqliteConnection {
     dotenv().ok();
 

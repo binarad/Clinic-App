@@ -3,7 +3,7 @@ use iced::{Element, Length};
 
 use crate::components::sidebar::{self, Tab};
 use crate::database::models::Employee;
-use crate::database::operations::{fetch_employees_db, insert_employee_db};
+use crate::database::operations::{delete_employee, fetch_employees_db, insert_employee_db};
 use crate::views::employees::{self, EmployeesMessage};
 
 // TODO: Move all mods to lib.rs
@@ -53,6 +53,24 @@ impl ClinicApp {
                 self.active_tab = new_tab;
             }
             Message::EmployeeView(employee_msg) => match employee_msg {
+                EmployeesMessage::DeleteEmployee(id) => {
+                    return iced::Task::perform(delete_employee(id), move |result| {
+                        Message::EmployeeView(EmployeesMessage::DeletedEmployee(result, id))
+                    });
+                }
+
+                EmployeesMessage::DeletedEmployee(result, deleted_id) => {
+                    match result {
+                        Ok(_) => {
+                            // Success! Update the UI by removing the employee from the vector.
+                            // .retain() keeps only the employees whose ID does NOT match the deleted_id.
+                            self.employees.retain(|emp| emp.employee_id != deleted_id);
+                        }
+                        Err(e) => {
+                            println!("Failed to delete employee: {}", e);
+                        }
+                    }
+                }
                 EmployeesMessage::OpenAddForm => {
                     self.active_modal = Some(ActiveModal::AddEmployee {
                         draft_name: String::new(),

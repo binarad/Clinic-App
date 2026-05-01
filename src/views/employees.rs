@@ -1,7 +1,6 @@
 use crate::theme;
 use iced::widget::{Space, button, column, container, pick_list, row, table, text, text_input};
 use iced::{Alignment, Element, Font, Length};
-// use iced_aw::{badge, drop_down};
 
 use crate::database::models::Employee;
 
@@ -9,6 +8,7 @@ use crate::database::models::Employee;
 pub enum EmployeesMessage {
     OpenAddForm,
     CloseAddForm,
+    DeleteEmployee(i32),
 
     // Form inputs
     NameChanged(String),
@@ -19,7 +19,7 @@ pub enum EmployeesMessage {
     // Async Actions
     SubmitForm,
     EmployeeAdded(Result<Employee, String>),
-    // SearchBarContentChanged(String),
+    DeletedEmployee(Result<usize, String>, i32),
 }
 
 const ROLES: &[&str] = &["Doctor", "Nurse", "Admin", "Registrar"];
@@ -53,9 +53,6 @@ pub fn view<'a>(employees: &'a [Employee]) -> Element<'a, EmployeesMessage> {
         table_content,
     ]
     .spacing(0);
-    // employees_page = employees_page.push(header);
-    // employees_page = employees_page.push(table_content);
-    // employees_page = employees_page.push(footer);
 
     container(content)
         .width(Length::Fill)
@@ -150,9 +147,10 @@ pub fn employees_table<'a>(employees: &'a [Employee]) -> Element<'a, EmployeesMe
                 weight: iced::font::Weight::Bold,
                 ..Default::default()
             }),
-            |_employee: &Employee| -> Element<'_, EmployeesMessage> {
+            |employee: &Employee| -> Element<'_, EmployeesMessage> {
                 let edit_btn = button("Edit"); // TODO: add on_press action for buttons
-                let delete_btn = button("Delete");
+                let delete_btn = button("Delete")
+                    .on_press(EmployeesMessage::DeleteEmployee(employee.employee_id));
 
                 row![edit_btn, delete_btn].spacing(5).into()
             },
