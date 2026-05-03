@@ -6,7 +6,7 @@ use crate::database::schema::*;
 // ----------------------------------------
 // PATIENT
 // ----------------------------------------
-#[derive(Queryable, Selectable, Debug)]
+#[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(table_name = patient)]
 pub struct Patient {
     pub patient_id: i32,   // PK, never null
