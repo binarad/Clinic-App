@@ -1,6 +1,7 @@
 // HERE WILL BE ALL DATABASE MAGIC THINGS
-use crate::database::models::{Employee, NewEmployee};
-use crate::database::schema::employee;
+use crate::database::models::{Employee, NewEmployee, NewPatient, Patient};
+use crate::database::schema::{employee, patient};
+use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use dotenvy::dotenv;
 use std::env;
@@ -98,9 +99,8 @@ pub async fn update_employee_db(
 }
 pub async fn delete_employee(target_id: i32) -> Result<usize, String> {
     // Push the heavy database work to a background thread
+    use crate::database::schema::employee::dsl::*;
     tokio::task::spawn_blocking(move || {
-        use crate::database::schema::employee::dsl::*;
-
         // Establish the connection
         let conn = &mut establish_connection();
 
@@ -112,6 +112,100 @@ pub async fn delete_employee(target_id: i32) -> Result<usize, String> {
     })
     .await
     .map_err(|e| format!("Error deleting employee: {}", e))?
+}
+
+pub async fn insert_patient_db(
+    full_name: String,
+    phone: String,
+    address: String,
+    birth_date: Option<NaiveDateTime>,
+) -> Result<Patient, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut conn = establish_connection();
+
+        // Format optional fields ( Empty strings become None)
+        let phone_opt = if phone.trim().is_empty() {
+            None
+        } else {
+            Some(phone.as_str())
+        };
+
+        let address_opt = if address.trim().is_empty() {
+            None
+        } else {
+            Some(address.as_str())
+        };
+
+        let new_patient = NewPatient {
+            full_name: &full_name,
+            phone: phone_opt,
+            address: address_opt,
+            birth_date,
+        };
+
+        // Insert and immediately return the newly created row
+        diesel::insert_into(patient::table)
+            .values(&new_patient)
+            .returning(Patient::as_returning())
+            .get_result(&mut conn)
+            .map_err(|e| format!("Database insertion failed: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task panicked: {}", e))?
+}
+
+pub async fn edit_patient_db(
+    target_id: i32,
+    new_name: String,
+    new_phone: String,
+    new_address: String,
+    new_birth_date: Option<NaiveDateTime>,
+) -> Result<Patient, String> {
+    use crate::database::schema::patient::dsl::*;
+
+    tokio::task::spawn_blocking(move || {
+        let mut conn = establish_connection();
+
+        let phone_opt = if new_phone.trim().is_empty() {
+            None
+        } else {
+            Some(new_phone.as_str())
+        };
+
+        let address_opt = if new_address.trim().is_empty() {
+            None
+        } else {
+            Some(new_address.as_str())
+        };
+
+        diesel::update(patient.filter(patient_id.eq(target_id)))
+            .set((
+                full_name.eq(&new_name),
+                phone.eq(phone_opt),
+                address.eq(address_opt),
+                birth_date.eq(new_birth_date),
+            ))
+            .returning(Patient::as_returning())
+            .get_result(&mut conn)
+            .map_err(|e| format!("Database update failed: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task panicked: {}", e))?
+}
+
+pub async fn delete_patient_db(target_id: i32) -> Result<usize, String> {
+    use crate::database::schema::patient::dsl::*;
+    tokio::task::spawn_blocking(move || {
+        let conn = &mut establish_connection();
+
+        // Run your exact delete query, but use map_err instead of expect
+        // so it doesn't crash the whole app if the database is locked
+        diesel::delete(patient.filter(patient_id.eq(target_id)))
+            .execute(conn)
+            .map_err(|e| format!("Error deleting patient: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task Paniced: {}", e))?
 }
 
 pub fn establish_connection() -> SqliteConnection {

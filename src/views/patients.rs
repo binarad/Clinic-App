@@ -19,10 +19,10 @@ pub enum PatientsMessage {
     CloseAddForm,
 
     OpenDatePicker,
-    CancelDatePicker, // Renamed to Cancel to match standard terminology
+    CancelDatePicker,
 
     // Form inputs
-    FieldChanged(PatientFormField, String), // Fixed the Enum Type here!
+    FieldChanged(PatientFormField, String),
     DateSelected(iced_aw::core::date::Date),
 
     // Async Actions

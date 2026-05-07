@@ -5,11 +5,13 @@ use crate::components::sidebar::{self, Tab};
 use crate::database::models::{Employee, Patient}; // Added Patient here!
 use crate::database::operations::{
     delete_employee,
+    delete_patient_db,
+    edit_patient_db,
     fetch_employees_db,
     insert_employee_db,
-    update_employee_db,
-    // Make sure you import your patient DB functions here too!
-    // fetch_patients_db, delete_patient_db, insert_patient_db, update_patient_db
+    insert_patient_db,
+    update_employee_db, // Make sure you import your patient DB functions here too!
+                        // fetch_patients_db, delete_patient_db, insert_patient_db, update_patient_db
 };
 use crate::views::employees::{EmployeesMessage, FormField, add_employee_form};
 use crate::views::patients::{PatientFormField, PatientsMessage, add_patient_form}; // Added Patient imports!
@@ -92,7 +94,6 @@ impl ClinicApp {
                 self.active_tab = new_tab;
             }
 
-            // ... (Your entire Message::EmployeeView block goes here, untouched) ...
             Message::EmployeeView(employee_msg) => match employee_msg {
                 EmployeesMessage::FieldChanged(field, new_value) => {
                     let draft = match &mut self.active_modal {
@@ -281,6 +282,62 @@ impl ClinicApp {
                 }
 
                 PatientsMessage::SubmitForm => {
+                    match &self.active_modal {
+                        Some(ActiveModal::AddPatient(draft)) => {
+                            if draft.name.trim().is_empty() {
+                                println!("Validation failed: Name is required");
+                                return iced::Task::none();
+                            }
+
+                            let name = draft.name.clone();
+                            let phone = draft.phone.clone();
+                            let parse_birth_date =
+                                chrono::NaiveDate::parse_from_str(&draft.birth_date, "%Y-%m-%d")
+                                    .ok()
+                                    .and_then(|d| d.and_hms_opt(0, 0, 0));
+                            let address = draft.address.clone();
+
+                            self.is_saving = true;
+
+                            return iced::Task::perform(
+                                insert_patient_db(name, phone, address, parse_birth_date),
+                                |result| {
+                                    Message::PatientView(PatientsMessage::PatientAdded(result))
+                                },
+                            );
+                        }
+                        Some(ActiveModal::EditPatient { target_id, draft }) => {
+                            if draft.name.trim().is_empty() {
+                                return iced::Task::none();
+                            }
+
+                            let id = *target_id;
+                            let new_name = draft.name.clone();
+                            let new_phone = draft.phone.clone();
+                            let new_birth_date =
+                                chrono::NaiveDate::parse_from_str(&draft.birth_date, "%Y-%m-%d")
+                                    .ok()
+                                    .and_then(|d| d.and_hms_opt(0, 0, 0));
+                            let new_address = draft.address.clone();
+
+                            self.is_saving = true;
+
+                            return iced::Task::perform(
+                                edit_patient_db(
+                                    id,
+                                    new_name,
+                                    new_phone,
+                                    new_address,
+                                    new_birth_date,
+                                ),
+                                |result| {
+                                    Message::PatientView(PatientsMessage::PatientUpdated(result))
+                                },
+                            );
+                        } // TODO
+
+                        _ => return iced::Task::none(),
+                    }
                     // TODO: Paste the SubmitForm logic we wrote earlier here!
                     // (The one that parses chrono::NaiveDate and calls iced::Task::perform)
                 }
@@ -308,8 +365,9 @@ impl ClinicApp {
                 }
 
                 PatientsMessage::DeletePatient(id) => {
-                    // TODO: Replace with your actual delete_patient_db function
-                    // iced::Task::perform(delete_patient_db(id), ...)
+                    return iced::Task::perform(delete_patient_db(id), move |result| {
+                        Message::PatientView(PatientsMessage::DeletedPatient(result, id))
+                    });
                 }
 
                 PatientsMessage::DeletedPatient(result, deleted_id) => {
