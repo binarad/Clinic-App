@@ -134,7 +134,7 @@ pub struct NewRecordEntry<'a> {
 // ----------------------------------------
 // APPOINTMENT
 // ----------------------------------------
-#[derive(Queryable, Selectable, Debug)]
+#[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(table_name = appointment)]
 pub struct Appointment {
     pub appointment_id: i32, // PK, never null

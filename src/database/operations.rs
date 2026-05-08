@@ -1,11 +1,23 @@
 // HERE WILL BE ALL DATABASE MAGIC THINGS
-use crate::database::models::{Appointment, Employee, NewEmployee, NewPatient, Patient};
-use crate::database::schema::{employee, patient};
+use crate::database::models::{
+    Appointment, Employee, NewAppointment, NewEmployee, NewPatient, Patient,
+};
+use crate::database::schema::{appointment, employee, patient};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use dotenvy::dotenv;
 use std::env;
 use tokio;
+
+pub struct AppointmentPayload {
+    pub patient_id: i32,
+    pub doctor_id: i32,
+    pub registry_id: i32,
+    pub date: Option<NaiveDateTime>,
+    pub time: String,
+    pub status: String,
+    pub reason: String,
+}
 
 pub async fn insert_employee_db(
     role: String,
@@ -114,6 +126,17 @@ pub async fn delete_employee(target_id: i32) -> Result<usize, String> {
     .map_err(|e| format!("Error deleting employee: {}", e))?
 }
 
+pub fn fetch_patient_db() -> Vec<Patient> {
+    use crate::database::schema::patient::dsl::*;
+
+    let connection = &mut establish_connection();
+
+    patient
+        .limit(15)
+        .select(Patient::as_select())
+        .load(connection)
+        .expect("Error loading patients")
+}
 pub async fn insert_patient_db(
     full_name: String,
     phone: String,
@@ -208,15 +231,112 @@ pub async fn delete_patient_db(target_id: i32) -> Result<usize, String> {
     .map_err(|e| format!("Task Paniced: {}", e))?
 }
 
-pub async fn insert_appointment_db(
-    patient_id: i32,
-    doctor_id: i32,
-    registry_id: i32,
-    appointment_date: Option<NaiveDateTime>,
-    appointment_time: String,
-    status: String,
-    reason: String,
+pub async fn insert_appointment_db(payload: AppointmentPayload) -> Result<Appointment, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut conn = establish_connection();
+
+        let time_opt = if payload.time.trim().is_empty() {
+            None
+        } else {
+            Some(payload.time.as_str())
+        };
+
+        let status_opt = if payload.status.trim().is_empty() {
+            None
+        } else {
+            Some(payload.status.as_str())
+        };
+
+        let reason_opt = if payload.reason.trim().is_empty() {
+            None
+        } else {
+            Some(payload.reason.as_str())
+        };
+
+        let new_apt = NewAppointment {
+            appointment_date: payload.date,
+            appointment_time: time_opt,
+            patient_id: payload.patient_id,
+            doctor_id: payload.doctor_id,
+            registry_id: payload.registry_id,
+            status: status_opt,
+            reason: reason_opt,
+        };
+
+        diesel::insert_into(appointment::table)
+            .values(&new_apt)
+            .returning(Appointment::as_returning())
+            .get_result(&mut conn)
+            .map_err(|e| format!("Database insertion failed: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task panicked: {}", e))?
+}
+
+pub async fn update_appointment_db(
+    target_id: i32,
+    payload: AppointmentPayload,
 ) -> Result<Appointment, String> {
+    tokio::task::spawn_blocking(move || {
+        use crate::database::schema::appointment::dsl::*;
+        let mut conn = establish_connection();
+
+        // Convert empty UI strings into SQL NULLs (using .clone() since we own the strings here)
+        let time_opt = if payload.time.trim().is_empty() {
+            None
+        } else {
+            Some(payload.time.clone())
+        };
+        let status_opt = if payload.status.trim().is_empty() {
+            None
+        } else {
+            Some(payload.status.clone())
+        };
+        let reason_opt = if payload.reason.trim().is_empty() {
+            None
+        } else {
+            Some(payload.reason.clone())
+        };
+
+        // Update specific columns matching the target ID
+        diesel::update(appointment.filter(appointment_id.eq(target_id)))
+            .set((
+                patient_id.eq(payload.patient_id),
+                doctor_id.eq(payload.doctor_id),
+                registry_id.eq(payload.registry_id),
+                appointment_date.eq(payload.date),
+                appointment_time.eq(time_opt),
+                status.eq(status_opt),
+                reason.eq(reason_opt),
+            ))
+            .returning(Appointment::as_returning())
+            .get_result(&mut conn)
+            .map_err(|e| format!("Database update failed: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task panicked: {}", e))?
+}
+
+pub fn fetch_appointments_db() -> Vec<Appointment> {
+    use crate::database::schema::appointment::dsl::*;
+    let mut conn = establish_connection();
+
+    appointment
+        .load::<Appointment>(&mut conn)
+        .unwrap_or_else(|_| vec![]) // Return an empty vector if the table is empty/fails
+}
+
+pub async fn delete_appointment_db(target_id: i32) -> Result<usize, String> {
+    tokio::task::spawn_blocking(move || {
+        use crate::database::schema::appointment::dsl::*;
+        let mut conn = establish_connection();
+
+        diesel::delete(appointment.filter(appointment_id.eq(target_id)))
+            .execute(&mut conn)
+            .map_err(|e| format!("Error deleting appointment: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task panicked: {}", e))?
 }
 pub fn establish_connection() -> SqliteConnection {
     dotenv().ok();
