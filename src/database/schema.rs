@@ -9,6 +9,7 @@ diesel::table! {
         doctor_id -> Integer,
         registry_id -> Integer,
         status -> Nullable<Text>,
+        reason -> Nullable<Text>,
     }
 }
 

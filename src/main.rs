@@ -38,18 +38,36 @@ pub struct DraftPatient {
     pub show_picker: bool,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct DraftAppointment {
+    // TODO Update struct
+    pub patient_id: Option<i32>,
+    pub employee_id: Option<i32>, // The doctor/staff member
+    pub date: String,             // We can use iced_aw date_picker here too!
+    pub time: String,             // e.g., "14:30"
+    pub reason: String,
+    pub show_date_picker: bool,
+}
+
 #[derive(Debug, Clone)]
 pub enum ActiveModal {
+    // Employee
     AddEmployee(DraftEmployee),
     EditEmployee {
         target_id: i32,
         draft: DraftEmployee,
     },
-    // <-- ADDED PATIENT VARIANTS HERE -->
+    // Patient
     AddPatient(DraftPatient),
     EditPatient {
         target_id: i32,
         draft: DraftPatient,
+    },
+    // Appointments
+    AddAppointment(DraftAppointment),
+    EditAppointment {
+        target_id: i32,
+        draft: DraftAppointment,
     },
 }
 

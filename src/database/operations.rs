@@ -1,5 +1,5 @@
 // HERE WILL BE ALL DATABASE MAGIC THINGS
-use crate::database::models::{Employee, NewEmployee, NewPatient, Patient};
+use crate::database::models::{Appointment, Employee, NewEmployee, NewPatient, Patient};
 use crate::database::schema::{employee, patient};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
@@ -208,6 +208,16 @@ pub async fn delete_patient_db(target_id: i32) -> Result<usize, String> {
     .map_err(|e| format!("Task Paniced: {}", e))?
 }
 
+pub async fn insert_appointment_db(
+    patient_id: i32,
+    doctor_id: i32,
+    registry_id: i32,
+    appointment_date: Option<NaiveDateTime>,
+    appointment_time: String,
+    status: String,
+    reason: String,
+) -> Result<Appointment, String> {
+}
 pub fn establish_connection() -> SqliteConnection {
     dotenv().ok();
 

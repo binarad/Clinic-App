@@ -144,6 +144,7 @@ pub struct Appointment {
     pub doctor_id: i32,   // NOT NULL
     pub registry_id: i32, // NOT NULL
     pub status: Option<String>,
+    pub reason: Option<String>,
 }
 
 #[derive(Insertable)]
@@ -156,4 +157,5 @@ pub struct NewAppointment<'a> {
     pub doctor_id: i32,
     pub registry_id: i32,
     pub status: Option<&'a str>,
+    pub reason: Option<&'a str>,
 }
