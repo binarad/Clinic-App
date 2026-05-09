@@ -1,15 +1,8 @@
+use iced::Element;
 use iced::widget::{container, row, text};
-use iced::{Element, Length};
 
 use crate::components::sidebar::{self, Tab};
-use crate::database::models::Appointment;
-use crate::database::operations::{
-    AppointmentPayload, delete_appointment_db, fetch_appointments_db, insert_appointment_db,
-    update_appointment_db,
-};
-use crate::views::appointments::{
-    AppointmentFormField, AppointmentsMessage, DraftAppointment, add_appointment_form,
-};
+use crate::views::appointments::{AppointmentsMessage, AppointmentsTab};
 use crate::views::employees::{EmployeesMessage, EmployeesTab};
 use crate::views::patients::{PatientsMessage, PatientsTab};
 
@@ -27,23 +20,6 @@ pub struct DraftEmployee {
 }
 
 // Helper to grab the mutable draft during updates
-fn get_mut_apt_draft(modal: &mut Option<ActiveModal>) -> Option<&mut DraftAppointment> {
-    match modal {
-        Some(ActiveModal::AddAppointment(draft)) => Some(draft),
-        Some(ActiveModal::EditAppointment { draft, .. }) => Some(draft),
-        _ => None,
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum ActiveModal {
-    // Appointments
-    AddAppointment(DraftAppointment),
-    EditAppointment {
-        target_id: i32,
-        draft: DraftAppointment,
-    },
-}
 
 #[derive(Debug, Clone)]
 enum Message {
@@ -56,11 +32,9 @@ enum Message {
 pub struct ClinicApp {
     pub patients_tab: PatientsTab,
     pub employees_tab: EmployeesTab,
+    pub appointments_tab: AppointmentsTab,
 
-    pub appointments: Vec<Appointment>,
     pub active_tab: Tab,
-    pub active_modal: Option<ActiveModal>,
-    pub is_saving: bool,
 }
 
 impl ClinicApp {
@@ -68,11 +42,9 @@ impl ClinicApp {
         Self {
             patients_tab: PatientsTab::new(),
             employees_tab: EmployeesTab::new(),
-            appointments: fetch_appointments_db(),
+            appointments_tab: AppointmentsTab::new(),
 
             active_tab: Tab::Dashboard,
-            active_modal: None,
-            is_saving: false,
         }
     }
 
@@ -99,220 +71,18 @@ impl ClinicApp {
             // =====================================
             // APPOINTMENTS VIEW
             // =====================================
-            Message::AppointmentView(apt_msg) => match apt_msg {
-                AppointmentsMessage::OpenAddForm => {
-                    self.active_modal = Some(ActiveModal::AddAppointment(DraftAppointment::new()));
-                }
-
-                AppointmentsMessage::OpenEditForm(apt) => {
-                    self.active_modal = Some(ActiveModal::EditAppointment {
-                        target_id: apt.appointment_id,
-                        draft: DraftAppointment {
-                            patient_id: Some(apt.patient_id),
-                            doctor_id: Some(apt.doctor_id),
-                            registry_id: apt.registry_id,
-                            date: apt
-                                .appointment_date
-                                .map(|d| d.format("%Y-%m-%d").to_string())
-                                .unwrap_or_default(),
-                            time: apt.appointment_time.unwrap_or_default(),
-                            status: apt.status.unwrap_or_default(),
-                            reason: apt.reason.unwrap_or_default(),
-                            show_picker: false,
-                        },
-                    });
-                }
-
-                AppointmentsMessage::CloseAddForm => {
-                    self.active_modal = None;
-                }
-
-                AppointmentsMessage::PatientSelected(id) => {
-                    if let Some(draft) = get_mut_apt_draft(&mut self.active_modal) {
-                        draft.patient_id = Some(id);
-                    }
-                }
-
-                AppointmentsMessage::DoctorSelected(id) => {
-                    if let Some(draft) = get_mut_apt_draft(&mut self.active_modal) {
-                        draft.doctor_id = Some(id);
-                    }
-                }
-
-                AppointmentsMessage::FieldChanged(field, new_value) => {
-                    if let Some(draft) = get_mut_apt_draft(&mut self.active_modal) {
-                        match field {
-                            AppointmentFormField::Time => draft.time = new_value,
-                            AppointmentFormField::Status => draft.status = new_value,
-                            AppointmentFormField::Reason => draft.reason = new_value,
-                        }
-                    }
-                }
-
-                AppointmentsMessage::OpenDatePicker => {
-                    if let Some(draft) = get_mut_apt_draft(&mut self.active_modal) {
-                        draft.show_picker = true;
-                    }
-                }
-                AppointmentsMessage::CancelDatePicker => {
-                    if let Some(draft) = get_mut_apt_draft(&mut self.active_modal) {
-                        draft.show_picker = false;
-                    }
-                }
-                AppointmentsMessage::DateSelected(date) => {
-                    if let Some(draft) = get_mut_apt_draft(&mut self.active_modal) {
-                        draft.date = format!("{:04}-{:02}-{:02}", date.year, date.month, date.day);
-                        draft.show_picker = false;
-                    }
-                }
-
-                AppointmentsMessage::SubmitForm => {
-                    match &self.active_modal {
-                        Some(ActiveModal::AddAppointment(draft)) => {
-                            if draft.patient_id.is_none()
-                                || draft.doctor_id.is_none()
-                                || draft.date.is_empty()
-                            {
-                                println!("Validation failed: Patient, Doctor, and Date required");
-                                return iced::Task::none();
-                            }
-
-                            let parsed_date =
-                                chrono::NaiveDate::parse_from_str(&draft.date, "%Y-%m-%d")
-                                    .ok()
-                                    .and_then(|d| d.and_hms_opt(0, 0, 0));
-
-                            let safe_registry_id = self
-                                .employees_tab
-                                .employees
-                                .first()
-                                .map(|e| e.employee_id)
-                                .unwrap_or(1);
-
-                            let payload = AppointmentPayload {
-                                patient_id: draft.patient_id.unwrap(),
-                                doctor_id: draft.doctor_id.unwrap(),
-                                registry_id: safe_registry_id, // TODO: Make a proper registry id
-                                date: parsed_date,
-                                time: draft.time.clone(),
-                                status: draft.status.clone(),
-                                reason: draft.reason.clone(),
-                            };
-                            self.is_saving = true;
-
-                            return iced::Task::perform(insert_appointment_db(payload), |res| {
-                                Message::AppointmentView(AppointmentsMessage::AppointmentAdded(res))
-                            });
-                        }
-
-                        Some(ActiveModal::EditAppointment { target_id, draft }) => {
-                            if draft.patient_id.is_none()
-                                || draft.doctor_id.is_none()
-                                || draft.date.is_empty()
-                            {
-                                return iced::Task::none();
-                            }
-
-                            let id = *target_id;
-                            let parsed_date =
-                                chrono::NaiveDate::parse_from_str(&draft.date, "%Y-%m-%d")
-                                    .ok()
-                                    .and_then(|d| d.and_hms_opt(0, 0, 0));
-                            let safe_registry_id = self
-                                .employees_tab
-                                .employees
-                                .first()
-                                .map(|e| e.employee_id)
-                                .unwrap_or(1);
-
-                            let payload = AppointmentPayload {
-                                patient_id: draft.patient_id.unwrap(),
-                                doctor_id: draft.doctor_id.unwrap(),
-                                registry_id: safe_registry_id, // TODO: Make a proper registry id
-                                date: parsed_date,
-                                time: draft.time.clone(),
-                                status: draft.status.clone(),
-                                reason: draft.reason.clone(),
-                            };
-                            self.is_saving = true;
-
-                            return iced::Task::perform(
-                                update_appointment_db(id, payload),
-                                |res| {
-                                    Message::AppointmentView(
-                                        AppointmentsMessage::AppointmentUpdated(res),
-                                    )
-                                },
-                            );
-                        }
-
-                        // Catch-all to prevent compiler errors if an Employee modal is open
-                        _ => return iced::Task::none(),
-                    }
-                }
-
-                AppointmentsMessage::AppointmentAdded(result) => {
-                    self.is_saving = false;
-                    match result {
-                        Ok(new_apt) => {
-                            self.appointments.push(new_apt);
-                            self.active_modal = None;
-                        }
-                        Err(e) => {
-                            println!("DATABASE ERROR: {}", e);
-                        }
-                    }
-                }
-
-                AppointmentsMessage::AppointmentUpdated(result) => {
-                    self.is_saving = false;
-                    if let Ok(updated_apt) = result {
-                        if let Some(index) = self
-                            .appointments
-                            .iter()
-                            .position(|a| a.appointment_id == updated_apt.appointment_id)
-                        {
-                            self.appointments[index] = updated_apt;
-                        }
-                        self.active_modal = None;
-                    }
-                }
-
-                AppointmentsMessage::DeleteAppointment(id) => {
-                    return iced::Task::perform(delete_appointment_db(id), move |res| {
-                        Message::AppointmentView(AppointmentsMessage::DeletedAppointment(res, id))
-                    });
-                }
-
-                AppointmentsMessage::DeletedAppointment(result, deleted_id) => {
-                    if result.is_ok() {
-                        self.appointments.retain(|a| a.appointment_id != deleted_id);
-                    }
-                }
-            },
+            Message::AppointmentView(msg) => {
+                return self
+                    .appointments_tab
+                    .update(msg)
+                    .map(Message::AppointmentView);
+            }
         }
         iced::Task::none()
     }
 
     fn view(&self) -> iced::Element<'_, Message> {
         let sidebar_view = sidebar::view(&self.active_tab).map(Message::Sidebar);
-
-        // 1. DYNAMIC MODAL ROUTING
-        if let Some(modal) = &self.active_modal {
-            match modal {
-                // If it's a Patient Modal, draw the patient form
-                ActiveModal::AddAppointment(draft) | ActiveModal::EditAppointment { draft, .. } => {
-                    let form = container(add_appointment_form(
-                        draft,
-                        &self.patients_tab.patients,
-                        &self.employees_tab.employees,
-                    ))
-                    .width(Length::Fill)
-                    .height(Length::Fill);
-                    return Element::from(form).map(Message::AppointmentView);
-                }
-            }
-        }
 
         // 2. Render the main content area dynamically
         let content_view: Element<Message> = match self.active_tab {
@@ -322,12 +92,10 @@ impl ClinicApp {
             Tab::Patients => self.patients_tab.view().map(Message::PatientView),
 
             Tab::Employees => self.employees_tab.view().map(Message::EmployeeView),
-            Tab::Appointments => views::appointments::view(
-                &self.appointments,
-                &self.patients_tab.patients,
-                &self.employees_tab.employees,
-            )
-            .map(Message::AppointmentView),
+            Tab::Appointments => self
+                .appointments_tab
+                .view(&self.patients_tab.patients, &self.employees_tab.employees)
+                .map(Message::AppointmentView),
             Tab::Registry => text("Registry View").size(30).into(),
         };
 
