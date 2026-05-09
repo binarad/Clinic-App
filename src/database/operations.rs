@@ -205,6 +205,7 @@ pub fn fetch_registry_joined_db() -> Vec<(Employee, RegistryWorker)> {
         .inner_join(registry::table)
         // TELL DIESEL EXACTLY HOW TO MAP THE COLUMNS:
         .select((Employee::as_select(), RegistryWorker::as_select()))
+        .limit(15)
         .load::<(Employee, RegistryWorker)>(&mut conn)
         .unwrap_or_default()
 }
@@ -249,20 +250,51 @@ pub async fn update_employee_db(
     .map_err(|e| format!("Task panicked: {}", e))?
 }
 pub async fn delete_employee(target_id: i32) -> Result<usize, String> {
-    // Push the heavy database work to a background thread
-    use crate::database::schema::employee::dsl::*;
     tokio::task::spawn_blocking(move || {
-        // Establish the connection
-        let conn = &mut establish_connection();
+        let mut conn = establish_connection();
 
-        // Run your exact delete query, but use map_err instead of expect
-        // so it doesn't crash the whole app if the database is locked
-        diesel::delete(employee.filter(employee_id.eq(target_id)))
+        // START TRANSACTION
+        conn.transaction::<_, diesel::result::Error, _>(|conn| {
+            // Using explicit absolute paths so Rust doesn't get confused by shadowed imports!
+
+            // 1. Delete any appointments where this employee was the Doctor
+            diesel::delete(
+                crate::database::schema::appointment::table
+                    .filter(crate::database::schema::appointment::doctor_id.eq(target_id)),
+            )
+            .execute(conn)?;
+
+            // 2. Delete any appointments where this employee was the Registry Worker
+            diesel::delete(
+                crate::database::schema::appointment::table
+                    .filter(crate::database::schema::appointment::registry_id.eq(target_id)),
+            )
+            .execute(conn)?;
+
+            // 3. Delete their specific Subtype records
+            diesel::delete(
+                crate::database::schema::doctor::table
+                    .filter(crate::database::schema::doctor::employee_id.eq(target_id)),
+            )
+            .execute(conn)?;
+
+            diesel::delete(
+                crate::database::schema::registry::table
+                    .filter(crate::database::schema::registry::employee_id.eq(target_id)),
+            )
+            .execute(conn)?;
+
+            // 4. Finally, delete the Base Employee record
+            diesel::delete(
+                crate::database::schema::employee::table
+                    .filter(crate::database::schema::employee::employee_id.eq(target_id)),
+            )
             .execute(conn)
-            .map_err(|e| format!("Error deleting employee: {}", e))
+        })
+        .map_err(|e| format!("Cascade delete failed: {}", e))
     })
     .await
-    .map_err(|e| format!("Error deleting employee: {}", e))?
+    .map_err(|e| format!("Task panicked: {}", e))?
 }
 
 pub fn fetch_patient_db() -> Vec<Patient> {
@@ -355,19 +387,56 @@ pub async fn edit_patient_db(
     .map_err(|e| format!("Task panicked: {}", e))?
 }
 
+/// Deletes a Patient and all of their associated relational data safely
 pub async fn delete_patient_db(target_id: i32) -> Result<usize, String> {
-    use crate::database::schema::patient::dsl::*;
     tokio::task::spawn_blocking(move || {
-        let conn = &mut establish_connection();
+        let mut conn = establish_connection();
 
-        // Run your exact delete query, but use map_err instead of expect
-        // so it doesn't crash the whole app if the database is locked
-        diesel::delete(patient.filter(patient_id.eq(target_id)))
+        // START TRANSACTION
+        conn.transaction::<_, diesel::result::Error, _>(|conn| {
+            // 1. Delete all appointments assigned to this patient
+            diesel::delete(
+                crate::database::schema::appointment::table
+                    .filter(crate::database::schema::appointment::patient_id.eq(target_id)),
+            )
+            .execute(conn)?;
+
+            // ==========================================
+            // 🚨 MEDICAL RECORDS WARNING 🚨
+            // Because our SQL script inserted Medical Records for these patients,
+            // SQLite will ALSO block deletion until those are removed.
+            // If your schema.rs already has medical_record and record_entry,
+            // uncomment this block to safely delete those too!
+            // ==========================================
+            /*
+            // A. Find the patient's medical records to get their IDs
+            let record_ids: Vec<i32> = crate::database::schema::medical_record::table
+                .filter(crate::database::schema::medical_record::patient_id.eq(target_id))
+                .select(crate::database::schema::medical_record::record_number)
+                .load::<i32>(conn)?;
+
+            // B. Delete all entries inside those records
+            diesel::delete(crate::database::schema::record_entry::table
+                .filter(crate::database::schema::record_entry::record_number.eq_any(&record_ids)))
+                .execute(conn)?;
+
+            // C. Delete the medical records themselves
+            diesel::delete(crate::database::schema::medical_record::table
+                .filter(crate::database::schema::medical_record::patient_id.eq(target_id)))
+                .execute(conn)?;
+            */
+
+            // 2. Finally, delete the Base Patient record
+            diesel::delete(
+                crate::database::schema::patient::table
+                    .filter(crate::database::schema::patient::patient_id.eq(target_id)),
+            )
             .execute(conn)
-            .map_err(|e| format!("Error deleting patient: {}", e))
+        })
+        .map_err(|e| format!("Cascade delete failed: {}", e))
     })
     .await
-    .map_err(|e| format!("Task Paniced: {}", e))?
+    .map_err(|e| format!("Task panicked: {}", e))?
 }
 
 pub async fn insert_appointment_db(payload: AppointmentPayload) -> Result<Appointment, String> {
