@@ -508,6 +508,16 @@ fn appointments_table<'a>(
         )
         .width(Length::Fixed(100.0)),
         table::column(
+            text("Reason").font(Font {
+                weight: iced::font::Weight::Bold,
+                ..Default::default()
+            }),
+            |a: &Appointment| {
+                Element::from(text(a.reason.clone().unwrap_or_else(|| "N/A".to_string())))
+            },
+        )
+        .width(Length::FillPortion(2)),
+        table::column(
             text("Actions").font(Font {
                 weight: iced::font::Weight::Bold,
                 ..Default::default()

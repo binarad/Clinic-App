@@ -393,6 +393,16 @@ fn employees_table<'a>(employees: &'a [Employee]) -> Element<'a, EmployeesMessag
         )
         .width(Length::Fixed(150.0)),
         table::column(
+            text("Email").font(Font {
+                weight: iced::font::Weight::Bold,
+                ..Default::default()
+            }),
+            |e: &Employee| {
+                Element::from(text(e.email.clone().unwrap_or_else(|| "N/A".to_string())))
+            },
+        )
+        .width(Length::FillPortion(2)),
+        table::column(
             text("Actions").font(Font {
                 weight: iced::font::Weight::Bold,
                 ..Default::default()

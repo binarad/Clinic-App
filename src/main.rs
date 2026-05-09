@@ -5,6 +5,7 @@ use crate::components::sidebar::{self, Tab};
 use crate::views::appointments::{AppointmentsMessage, AppointmentsTab};
 use crate::views::employees::{EmployeesMessage, EmployeesTab};
 use crate::views::patients::{PatientsMessage, PatientsTab};
+use crate::views::registry::{RegistryMessage, RegistryTab};
 
 pub mod components;
 pub mod database;
@@ -27,12 +28,14 @@ enum Message {
     EmployeeView(EmployeesMessage),
     PatientView(PatientsMessage),
     AppointmentView(AppointmentsMessage),
+    RegistryView(RegistryMessage),
 }
 
 pub struct ClinicApp {
     pub patients_tab: PatientsTab,
     pub employees_tab: EmployeesTab,
     pub appointments_tab: AppointmentsTab,
+    pub registry_tab: RegistryTab,
 
     pub active_tab: Tab,
 }
@@ -43,6 +46,7 @@ impl ClinicApp {
             patients_tab: PatientsTab::new(),
             employees_tab: EmployeesTab::new(),
             appointments_tab: AppointmentsTab::new(),
+            registry_tab: RegistryTab::new(),
 
             active_tab: Tab::Dashboard,
         }
@@ -54,28 +58,44 @@ impl ClinicApp {
                 self.active_tab = new_tab;
             }
 
-            // =====================================
             // EMPLOYEES VIEW
-            // =====================================
             Message::EmployeeView(msg) => {
-                return self.employees_tab.update(msg).map(Message::EmployeeView);
+                let needs_registry_refresh = matches!(
+                    &msg,
+                    EmployeesMessage::EmployeeAdded(Ok(_))
+                        | EmployeesMessage::DeletedEmployee(Ok(_), _)
+                );
+
+                // // 2. Let the Employee tab process the message normally
+                let task = self.employees_tab.update(msg).map(Message::EmployeeView);
+
+                // 3. If a change happened, force the Registry tab to refresh its data
+                if needs_registry_refresh {
+                    // This synchronously re-fetches the joined data from the DB!
+                    let _ = self
+                        .registry_tab
+                        .update(crate::views::registry::RegistryMessage::Refresh);
+                }
+
+                return task;
             }
 
-            // =====================================
             // PATIENTS VIEW
-            // =====================================
             Message::PatientView(msg) => {
                 return self.patients_tab.update(msg).map(Message::PatientView);
             }
 
-            // =====================================
             // APPOINTMENTS VIEW
-            // =====================================
             Message::AppointmentView(msg) => {
                 return self
                     .appointments_tab
                     .update(msg)
                     .map(Message::AppointmentView);
+            }
+
+            // REGISTRY VIEW
+            Message::RegistryView(msg) => {
+                return self.registry_tab.update(msg).map(Message::RegistryView);
             }
         }
         iced::Task::none()
@@ -96,7 +116,7 @@ impl ClinicApp {
                 .appointments_tab
                 .view(&self.patients_tab.patients, &self.employees_tab.employees)
                 .map(Message::AppointmentView),
-            Tab::Registry => text("Registry View").size(30).into(),
+            Tab::Registry => self.registry_tab.view().map(Message::RegistryView),
         };
 
         let main_content = container(content_view)
