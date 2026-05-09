@@ -175,7 +175,7 @@ pub async fn insert_registry_worker_db(
     .map_err(|e| format!("Task panicked: {}", e))?
 }
 
-pub fn fetch_employees_db() -> Vec<Employee> {
+pub fn fetch_all_employees_db() -> Vec<Employee> {
     use crate::database::schema::employee::dsl::*;
 
     let connection = &mut establish_connection();

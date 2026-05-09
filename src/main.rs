@@ -2,16 +2,15 @@ use iced::widget::{container, row, text};
 use iced::{Element, Length};
 
 use crate::components::sidebar::{self, Tab};
-use crate::database::models::{Appointment, Employee};
+use crate::database::models::Appointment;
 use crate::database::operations::{
-    AppointmentPayload, delete_appointment_db, delete_employee, fetch_appointments_db,
-    fetch_employees_db, insert_appointment_db, insert_employee_db, update_appointment_db,
-    update_employee_db,
+    AppointmentPayload, delete_appointment_db, fetch_appointments_db, insert_appointment_db,
+    update_appointment_db,
 };
 use crate::views::appointments::{
     AppointmentFormField, AppointmentsMessage, DraftAppointment, add_appointment_form,
 };
-use crate::views::employees::{EmployeesMessage, FormField, add_employee_form};
+use crate::views::employees::{EmployeesMessage, EmployeesTab};
 use crate::views::patients::{PatientsMessage, PatientsTab};
 
 pub mod components;
@@ -38,12 +37,6 @@ fn get_mut_apt_draft(modal: &mut Option<ActiveModal>) -> Option<&mut DraftAppoin
 
 #[derive(Debug, Clone)]
 pub enum ActiveModal {
-    // Employee
-    AddEmployee(DraftEmployee),
-    EditEmployee {
-        target_id: i32,
-        draft: DraftEmployee,
-    },
     // Appointments
     AddAppointment(DraftAppointment),
     EditAppointment {
@@ -62,8 +55,8 @@ enum Message {
 
 pub struct ClinicApp {
     pub patients_tab: PatientsTab,
+    pub employees_tab: EmployeesTab,
 
-    pub employees: Vec<Employee>,
     pub appointments: Vec<Appointment>,
     pub active_tab: Tab,
     pub active_modal: Option<ActiveModal>,
@@ -74,7 +67,7 @@ impl ClinicApp {
     fn new() -> Self {
         Self {
             patients_tab: PatientsTab::new(),
-            employees: fetch_employees_db(),
+            employees_tab: EmployeesTab::new(),
             appointments: fetch_appointments_db(),
 
             active_tab: Tab::Dashboard,
@@ -92,132 +85,9 @@ impl ClinicApp {
             // =====================================
             // EMPLOYEES VIEW
             // =====================================
-            Message::EmployeeView(employee_msg) => match employee_msg {
-                EmployeesMessage::FieldChanged(field, new_value) => {
-                    let draft = match &mut self.active_modal {
-                        Some(ActiveModal::AddEmployee(draft)) => draft,
-                        Some(ActiveModal::EditEmployee { draft, .. }) => draft,
-                        _ => return iced::Task::none(),
-                    };
-
-                    match field {
-                        FormField::Name => draft.name = new_value,
-                        FormField::Phone => draft.phone = new_value,
-                        FormField::Email => draft.email = new_value,
-                        FormField::Role => draft.role = Some(new_value),
-                    }
-                    return iced::Task::none();
-                }
-
-                EmployeesMessage::DeleteEmployee(id) => {
-                    return iced::Task::perform(delete_employee(id), move |result| {
-                        Message::EmployeeView(EmployeesMessage::DeletedEmployee(result, id))
-                    });
-                }
-
-                EmployeesMessage::DeletedEmployee(result, deleted_id) => match result {
-                    Ok(_) => {
-                        self.employees.retain(|emp| emp.employee_id != deleted_id);
-                    }
-                    Err(e) => {
-                        println!("Failed to delete employee: {}", e);
-                    }
-                },
-
-                EmployeesMessage::OpenAddForm => {
-                    self.active_modal = Some(ActiveModal::AddEmployee(DraftEmployee::default()));
-                }
-
-                EmployeesMessage::OpenEditForm(emp) => {
-                    self.active_modal = Some(ActiveModal::EditEmployee {
-                        target_id: emp.employee_id,
-                        draft: DraftEmployee {
-                            name: emp.full_name,
-                            phone: emp.phone.unwrap_or_default(),
-                            email: emp.email.unwrap_or_default(),
-                            role: Some(emp.role),
-                        },
-                    });
-                }
-
-                EmployeesMessage::CloseAddForm => {
-                    self.active_modal = None;
-                }
-
-                EmployeesMessage::SubmitForm => match &self.active_modal {
-                    Some(ActiveModal::AddEmployee(draft)) => {
-                        if draft.name.trim().is_empty() || draft.role.is_none() {
-                            println!("Validation failed: Name and Role are required.");
-                            return iced::Task::none();
-                        }
-
-                        let role = draft.role.clone().unwrap();
-                        let name = draft.name.clone();
-                        let phone = draft.phone.clone();
-                        let email = draft.email.clone();
-
-                        self.is_saving = true;
-
-                        return iced::Task::perform(
-                            insert_employee_db(role, name, phone, email),
-                            |result| Message::EmployeeView(EmployeesMessage::EmployeeAdded(result)),
-                        );
-                    }
-
-                    Some(ActiveModal::EditEmployee { target_id, draft }) => {
-                        if draft.name.trim().is_empty() || draft.role.is_none() {
-                            return iced::Task::none();
-                        }
-
-                        let id = *target_id;
-                        let role = draft.role.clone().unwrap();
-                        let name = draft.name.clone();
-                        let phone = draft.phone.clone();
-                        let email = draft.email.clone();
-
-                        self.is_saving = true;
-
-                        return iced::Task::perform(
-                            update_employee_db(id, role, name, phone, email),
-                            |result| {
-                                Message::EmployeeView(EmployeesMessage::EmployeeUpdated(result))
-                            },
-                        );
-                    }
-
-                    _ => return iced::Task::none(),
-                },
-
-                EmployeesMessage::EmployeeUpdated(result) => {
-                    self.is_saving = false;
-                    match result {
-                        Ok(updated_employee) => {
-                            if let Some(index) = self
-                                .employees
-                                .iter()
-                                .position(|e| e.employee_id == updated_employee.employee_id)
-                            {
-                                self.employees[index] = updated_employee;
-                            }
-                            self.active_modal = None
-                        }
-                        Err(e) => println!("Failed to update: {}", e),
-                    }
-                }
-
-                EmployeesMessage::EmployeeAdded(result) => {
-                    self.is_saving = false;
-                    match result {
-                        Ok(new_employee) => {
-                            self.employees.push(new_employee);
-                            self.active_modal = None;
-                        }
-                        Err(e) => {
-                            println!("Failed to add employee: {}", e);
-                        }
-                    }
-                }
-            },
+            Message::EmployeeView(msg) => {
+                return self.employees_tab.update(msg).map(Message::EmployeeView);
+            }
 
             // =====================================
             // PATIENTS VIEW
@@ -312,8 +182,12 @@ impl ClinicApp {
                                     .ok()
                                     .and_then(|d| d.and_hms_opt(0, 0, 0));
 
-                            let safe_registry_id =
-                                self.employees.first().map(|e| e.employee_id).unwrap_or(1);
+                            let safe_registry_id = self
+                                .employees_tab
+                                .employees
+                                .first()
+                                .map(|e| e.employee_id)
+                                .unwrap_or(1);
 
                             let payload = AppointmentPayload {
                                 patient_id: draft.patient_id.unwrap(),
@@ -344,8 +218,12 @@ impl ClinicApp {
                                 chrono::NaiveDate::parse_from_str(&draft.date, "%Y-%m-%d")
                                     .ok()
                                     .and_then(|d| d.and_hms_opt(0, 0, 0));
-                            let safe_registry_id =
-                                self.employees.first().map(|e| e.employee_id).unwrap_or(1);
+                            let safe_registry_id = self
+                                .employees_tab
+                                .employees
+                                .first()
+                                .map(|e| e.employee_id)
+                                .unwrap_or(1);
 
                             let payload = AppointmentPayload {
                                 patient_id: draft.patient_id.unwrap(),
@@ -422,25 +300,12 @@ impl ClinicApp {
         // 1. DYNAMIC MODAL ROUTING
         if let Some(modal) = &self.active_modal {
             match modal {
-                // If it's an Employee Modal, draw the employee form
-                ActiveModal::AddEmployee(d) | ActiveModal::EditEmployee { draft: d, .. } => {
-                    let form = container(add_employee_form(
-                        &d.name,
-                        &d.phone,
-                        &d.email,
-                        d.role.as_deref(),
-                    ))
-                    .width(Length::Fill)
-                    .height(Length::Fill);
-                    return Element::from(form).map(Message::EmployeeView);
-                }
-
                 // If it's a Patient Modal, draw the patient form
                 ActiveModal::AddAppointment(draft) | ActiveModal::EditAppointment { draft, .. } => {
                     let form = container(add_appointment_form(
                         draft,
                         &self.patients_tab.patients,
-                        &self.employees,
+                        &self.employees_tab.employees,
                     ))
                     .width(Length::Fill)
                     .height(Length::Fill);
@@ -456,11 +321,11 @@ impl ClinicApp {
             // Map the patient table!
             Tab::Patients => self.patients_tab.view().map(Message::PatientView),
 
-            Tab::Employees => views::employees::view(&self.employees).map(Message::EmployeeView),
+            Tab::Employees => self.employees_tab.view().map(Message::EmployeeView),
             Tab::Appointments => views::appointments::view(
                 &self.appointments,
                 &self.patients_tab.patients,
-                &self.employees,
+                &self.employees_tab.employees,
             )
             .map(Message::AppointmentView),
             Tab::Registry => text("Registry View").size(30).into(),
