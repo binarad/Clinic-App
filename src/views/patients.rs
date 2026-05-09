@@ -2,16 +2,26 @@ use crate::database::models::Patient;
 use crate::database::operations::{
     delete_patient_db, edit_patient_db, fetch_patient_db, insert_patient_db,
 };
+
+use crate::components::shared::{pagination::pagination, search_bar::search_bar};
 use crate::theme;
 use iced::widget::{Space, button, column, container, row, table, text, text_input};
 use iced::{Alignment, Element, Font, Length};
 use iced_aw::helpers::date_picker; // <-- Import the helper!
 
+const ITEMS_PER_PAGE: usize = 15;
 // =================================
 // STATE & DRAFTS
 // =================================
 pub struct PatientsTab {
     pub patients: Vec<Patient>,
+
+    pub search_query: String,
+    pub current_page: usize,
+
+    pub page_data: Vec<Patient>,
+    pub total_pages: usize,
+
     pub active_modal: Option<PatientModal>,
     pub is_saving: bool,
 }
@@ -41,6 +51,11 @@ pub enum PatientFormField {
 
 #[derive(Debug, Clone)]
 pub enum PatientsMessage {
+    SearchChanged(String),
+    ClearSearch,
+    NextPage,
+    PreviousPage,
+
     OpenAddForm,
     OpenEditForm(Patient),
     CloseForm,
@@ -67,11 +82,51 @@ impl Default for PatientsTab {
 }
 impl PatientsTab {
     pub fn new() -> Self {
-        Self {
+        let mut tab = Self {
             patients: fetch_patient_db(),
             active_modal: None,
             is_saving: false,
-        }
+            search_query: String::new(),
+            current_page: 1,
+            page_data: Vec::new(),
+            total_pages: 1,
+        };
+
+        tab.sync_view();
+        tab
+    }
+
+    /// Updates `page_data` and `total_pages` based on the current search and page number.
+    fn sync_view(&mut self) {
+        let query = self.search_query.to_lowercase();
+
+        // 1. Filter
+        let filtered_patients: Vec<&Patient> = self
+            .patients
+            .iter()
+            .filter(|p| {
+                if query.is_empty() {
+                    return true;
+                }
+                let name_matches = p.full_name.to_lowercase().contains(&query);
+                let phone_matches = p.phone.as_deref().unwrap_or("").contains(&query);
+                name_matches || phone_matches
+            })
+            .collect();
+
+        // 2. Calculate Pages
+        let total_items = filtered_patients.len();
+        self.total_pages = (total_items as f32 / ITEMS_PER_PAGE as f32).ceil() as usize;
+        self.current_page = self.current_page.min(self.total_pages.max(1));
+
+        // 3. Slice and Store in State!
+        let start_idx = (self.current_page.saturating_sub(1)) * ITEMS_PER_PAGE;
+        let end_idx = (start_idx + ITEMS_PER_PAGE).min(total_items);
+
+        self.page_data = filtered_patients[start_idx..end_idx]
+            .iter()
+            .map(|&p| p.clone())
+            .collect();
     }
 
     // Helper to grab the mutable patient draft
@@ -85,6 +140,30 @@ impl PatientsTab {
 
     pub fn update(&mut self, message: PatientsMessage) -> iced::Task<PatientsMessage> {
         match message {
+            PatientsMessage::SearchChanged(query) => {
+                self.search_query = query;
+                self.current_page = 1;
+                self.sync_view();
+                iced::Task::none()
+            }
+            PatientsMessage::ClearSearch => {
+                self.search_query.clear();
+                self.current_page = 1;
+                self.sync_view();
+                iced::Task::none()
+            }
+            PatientsMessage::NextPage => {
+                self.current_page += 1;
+                self.sync_view();
+                iced::Task::none()
+            }
+            PatientsMessage::PreviousPage => {
+                if self.current_page > 1 {
+                    self.current_page -= 1;
+                    self.sync_view();
+                }
+                iced::Task::none()
+            }
             PatientsMessage::OpenAddForm => {
                 self.active_modal = Some(PatientModal::Add(DraftPatient::default()));
                 iced::Task::none()
@@ -194,6 +273,7 @@ impl PatientsTab {
                 if let Ok(new_patient) = result {
                     self.patients.push(new_patient);
                     self.active_modal = None;
+                    self.sync_view();
                 }
                 iced::Task::none()
             }
@@ -206,6 +286,7 @@ impl PatientsTab {
                         .position(|p| p.patient_id == updated_patient.patient_id)
                     {
                         self.patients[idx] = updated_patient;
+                        self.sync_view();
                     }
                     self.active_modal = None;
                 }
@@ -219,6 +300,7 @@ impl PatientsTab {
             PatientsMessage::DeletedPatient(result, deleted_id) => {
                 if result.is_ok() {
                     self.patients.retain(|p| p.patient_id != deleted_id);
+                    self.sync_view();
                 }
                 iced::Task::none()
             }
@@ -238,25 +320,61 @@ impl PatientsTab {
             }
         }
 
+        // ==========================================
+        // 5. DRAW THE UI
+        // ==========================================
         let header = row![text("Patients").color(theme::NAVY_SLATE).size(30.0)]
             .align_y(Alignment::Center)
             .width(Length::Fill);
+
+        // Instantiate our generic Shared Components!
+        let search_ui = search_bar(
+            &self.search_query,
+            "Search name or phone...",
+            PatientsMessage::SearchChanged,
+            Some(PatientsMessage::ClearSearch),
+        );
+
+        let pagination_ui = pagination(
+            self.current_page,
+            self.total_pages,
+            PatientsMessage::PreviousPage,
+            PatientsMessage::NextPage,
+        );
+
+        let total_count = self.patients.len(); // Or use filtered_patients.len() if you calculated it!
+        let footer_text = text(format!("Total Patients: {}", total_count))
+            .font(Font {
+                weight: iced::font::Weight::Bold,
+                ..Default::default()
+            })
+            .size(16);
+
+        let bottom_bar = row![
+            footer_text,                      // Total on the far left
+            Space::new().width(Length::Fill), // Pushes pagination to the far right
+            pagination_ui                     // Pagination on the right
+        ]
+        .align_y(Alignment::Center)
+        .width(Length::Fill);
 
         let add_btn = button(text("Add New Patient"))
             .on_press(PatientsMessage::OpenAddForm)
             .style(theme::primary_button)
             .padding([4, 8]);
 
-        let action_bar = row![Space::new().width(Length::Fill), add_btn,].width(Length::Fill);
-
-        let table_content = patients_table(&self.patients);
+        let action_bar = row![search_ui, Space::new().width(Length::Fill), add_btn,]
+            .spacing(15.0)
+            .width(Length::Fill);
 
         let content = column![
             header,
             Space::new().height(5.0),
             action_bar,
             Space::new().height(15.0),
-            table_content,
+            patients_table(&self.page_data),
+            Space::new().height(15.0),
+            bottom_bar
         ]
         .spacing(0);
 
@@ -353,18 +471,7 @@ pub fn patients_table<'a>(patients: &'a [Patient]) -> Element<'a, PatientsMessag
         .separator_y(1.0)
         .separator_x(0.0);
 
-    let total_count = patients.len();
-    let footer = container(text(format!("Total Patients: {}", total_count)).font(Font {
-        weight: iced::font::Weight::Bold,
-        ..Default::default()
-    }))
-    .width(Length::Fill)
-    .align_x(Alignment::Start)
-    .padding([10, 20]);
-
-    let content = column![data_table, Space::new().height(Length::Fill), footer];
-
-    container(content)
+    container(data_table)
         .width(Length::Fill)
         .height(Length::Fill)
         .style(theme::white_card)

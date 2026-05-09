@@ -1,16 +1,16 @@
+use crate::components::shared::pagination::pagination;
+use crate::components::shared::search_bar::search_bar;
 use crate::database::models::Employee;
 use crate::database::operations::{
-    delete_employee,
-    fetch_all_employees_db,
-    insert_doctor_db,
-    insert_registry_worker_db,
-    // Add an update_doctor_db / update_registry_db here later when you write them!
+    delete_employee, fetch_all_employees_db, insert_doctor_db, insert_registry_worker_db,
 };
 use crate::theme;
+
 use iced::widget::{Space, button, column, container, pick_list, row, table, text, text_input};
 use iced::{Alignment, Element, Font, Length};
 
 const ROLE_OPTIONS: &[&str] = &["Doctor", "Registry", "General Staff"];
+const ITEMS_PER_PAGE: usize = 10;
 
 // ==========================================
 // STATE & DRAFTS
@@ -19,6 +19,10 @@ pub struct EmployeesTab {
     pub employees: Vec<Employee>,
     pub active_modal: Option<EmployeeModal>,
     pub is_saving: bool,
+    pub search_query: String,
+    pub current_page: usize,
+    pub page_data: Vec<Employee>,
+    pub total_pages: usize,
 }
 
 impl Default for EmployeesTab {
@@ -33,7 +37,6 @@ pub struct DraftEmployee {
     pub phone: String,
     pub email: String,
     pub role: Option<String>,
-    // Subtype specific fields:
     pub specialty: String,
     pub office: String,
     pub window_number: String,
@@ -70,6 +73,10 @@ pub enum EmployeesMessage {
     EmployeeUpdated(Result<Employee, String>),
     DeleteEmployee(i32),
     DeletedEmployee(Result<usize, String>, i32),
+    SearchChanged(String),
+    ClearSearch,
+    NextPage,
+    PreviousPage,
 }
 
 // ==========================================
@@ -77,11 +84,53 @@ pub enum EmployeesMessage {
 // ==========================================
 impl EmployeesTab {
     pub fn new() -> Self {
-        Self {
+        let mut tab = Self {
             employees: fetch_all_employees_db(),
             active_modal: None,
             is_saving: false,
-        }
+            search_query: String::new(),
+            current_page: 1,
+            page_data: Vec::new(),
+            total_pages: 1,
+        };
+        tab.sync_view();
+        tab
+    }
+
+    fn sync_view(&mut self) {
+        let query = self.search_query.to_lowercase();
+
+        let filtered: Vec<&Employee> = self
+            .employees
+            .iter()
+            .filter(|e| {
+                if query.is_empty() {
+                    return true;
+                }
+                let name_matches = e.full_name.to_lowercase().contains(&query);
+                let role_matches = e.role.to_lowercase().contains(&query);
+                let phone_matches = e.phone.as_deref().unwrap_or("").contains(&query);
+                let email_matches = e
+                    .email
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&query);
+                name_matches || role_matches || phone_matches || email_matches
+            })
+            .collect();
+
+        let total_items = filtered.len();
+        self.total_pages = (total_items as f32 / ITEMS_PER_PAGE as f32).ceil() as usize;
+        self.current_page = self.current_page.min(self.total_pages.max(1));
+
+        let start_idx = (self.current_page.saturating_sub(1)) * ITEMS_PER_PAGE;
+        let end_idx = (start_idx + ITEMS_PER_PAGE).min(total_items);
+
+        self.page_data = filtered[start_idx..end_idx]
+            .iter()
+            .map(|&e| e.clone())
+            .collect();
     }
 
     fn get_mut_draft(&mut self) -> Option<&mut DraftEmployee> {
@@ -94,6 +143,31 @@ impl EmployeesTab {
 
     pub fn update(&mut self, message: EmployeesMessage) -> iced::Task<EmployeesMessage> {
         match message {
+            EmployeesMessage::SearchChanged(query) => {
+                self.search_query = query;
+                self.current_page = 1;
+                self.sync_view();
+                iced::Task::none()
+            }
+            EmployeesMessage::ClearSearch => {
+                self.search_query.clear();
+                self.current_page = 1;
+                self.sync_view();
+                iced::Task::none()
+            }
+            EmployeesMessage::NextPage => {
+                self.current_page += 1;
+                self.sync_view();
+                iced::Task::none()
+            }
+            EmployeesMessage::PreviousPage => {
+                if self.current_page > 1 {
+                    self.current_page -= 1;
+                    self.sync_view();
+                }
+                iced::Task::none()
+            }
+
             EmployeesMessage::OpenAddForm => {
                 self.active_modal = Some(EmployeeModal::Add(DraftEmployee::default()));
                 iced::Task::none()
@@ -106,7 +180,7 @@ impl EmployeesTab {
                         phone: emp.phone.unwrap_or_default(),
                         email: emp.email.unwrap_or_default(),
                         role: Some(emp.role),
-                        specialty: String::new(), // You'd fetch these joined details later for editing!
+                        specialty: String::new(),
                         office: String::new(),
                         window_number: String::new(),
                     },
@@ -131,66 +205,56 @@ impl EmployeesTab {
                 }
                 iced::Task::none()
             }
-            EmployeesMessage::SubmitForm => {
-                match &self.active_modal {
-                    Some(EmployeeModal::Add(draft)) => {
-                        if draft.name.trim().is_empty() || draft.role.is_none() {
-                            return iced::Task::none();
-                        }
-
-                        let role = draft.role.clone().unwrap();
-                        self.is_saving = true;
-
-                        // Route to the correct Database Transaction!
-                        if role == "Doctor" {
-                            iced::Task::perform(
-                                insert_doctor_db(
-                                    draft.name.clone(),
-                                    draft.phone.clone(),
-                                    draft.email.clone(),
-                                    draft.specialty.clone(),
-                                    draft.office.clone(),
-                                ),
-                                |res| match res {
-                                    Ok((emp, _doc)) => EmployeesMessage::EmployeeAdded(Ok(emp)),
-                                    Err(e) => EmployeesMessage::EmployeeAdded(Err(e)),
-                                },
-                            )
-                        } else if role == "Registry" {
-                            let window = draft.window_number.parse::<f64>().ok();
-                            iced::Task::perform(
-                                insert_registry_worker_db(
-                                    draft.name.clone(),
-                                    draft.phone.clone(),
-                                    draft.email.clone(),
-                                    window,
-                                ),
-                                |res| match res {
-                                    Ok((emp, _reg)) => EmployeesMessage::EmployeeAdded(Ok(emp)),
-                                    Err(e) => EmployeesMessage::EmployeeAdded(Err(e)),
-                                },
-                            )
-                        } else {
-                            // If it's general staff, you'd call a standard insert_employee_db here
-                            println!("General staff insert not yet implemented!");
-                            iced::Task::none()
-                        }
+            EmployeesMessage::SubmitForm => match &self.active_modal {
+                Some(EmployeeModal::Add(draft)) => {
+                    if draft.name.trim().is_empty() || draft.role.is_none() {
+                        return iced::Task::none();
                     }
-                    Some(EmployeeModal::Edit { .. }) => {
-                        // Implement update logic later
+                    let role = draft.role.clone().unwrap();
+                    self.is_saving = true;
+
+                    if role == "Doctor" {
+                        iced::Task::perform(
+                            insert_doctor_db(
+                                draft.name.clone(),
+                                draft.phone.clone(),
+                                draft.email.clone(),
+                                draft.specialty.clone(),
+                                draft.office.clone(),
+                            ),
+                            |res| match res {
+                                Ok((emp, _doc)) => EmployeesMessage::EmployeeAdded(Ok(emp)),
+                                Err(e) => EmployeesMessage::EmployeeAdded(Err(e)),
+                            },
+                        )
+                    } else if role == "Registry" {
+                        let window = draft.window_number.parse::<f64>().ok();
+                        iced::Task::perform(
+                            insert_registry_worker_db(
+                                draft.name.clone(),
+                                draft.phone.clone(),
+                                draft.email.clone(),
+                                window,
+                            ),
+                            |res| match res {
+                                Ok((emp, _reg)) => EmployeesMessage::EmployeeAdded(Ok(emp)),
+                                Err(e) => EmployeesMessage::EmployeeAdded(Err(e)),
+                            },
+                        )
+                    } else {
+                        println!("General staff insert not yet implemented!");
                         iced::Task::none()
                     }
-                    _ => iced::Task::none(),
                 }
-            }
+                Some(EmployeeModal::Edit { .. }) => iced::Task::none(),
+                _ => iced::Task::none(),
+            },
             EmployeesMessage::EmployeeAdded(result) => {
                 self.is_saving = false;
-                match result {
-                    Ok(new_emp) => {
-                        self.employees.push(new_emp);
-                        self.active_modal = None;
-                    }
-                    Err(e) => println!("🚨 DB ERROR: {}", e),
+                if let Ok(new_emp) = result {
+                    self.employees.push(new_emp);
+                    self.active_modal = None;
+                    self.sync_view();
                 }
                 iced::Task::none()
             }
@@ -203,6 +267,7 @@ impl EmployeesTab {
                         .position(|e| e.employee_id == updated_emp.employee_id)
                     {
                         self.employees[idx] = updated_emp;
+                        self.sync_view();
                     }
                     self.active_modal = None;
                 }
@@ -216,6 +281,7 @@ impl EmployeesTab {
             EmployeesMessage::DeletedEmployee(result, deleted_id) => {
                 if result.is_ok() {
                     self.employees.retain(|e| e.employee_id != deleted_id);
+                    self.sync_view();
                 }
                 iced::Task::none()
             }
@@ -238,19 +304,49 @@ impl EmployeesTab {
             .align_y(Alignment::Center)
             .width(Length::Fill);
 
+        let search_ui = search_bar(
+            &self.search_query,
+            "Search name, role, email, or phone...",
+            EmployeesMessage::SearchChanged,
+            Some(EmployeesMessage::ClearSearch),
+        );
+
+        let pagination_ui = pagination(
+            self.current_page,
+            self.total_pages,
+            EmployeesMessage::PreviousPage,
+            EmployeesMessage::NextPage,
+        );
+
         let add_btn = button(text("Add Staff Member"))
             .on_press(EmployeesMessage::OpenAddForm)
             .style(theme::primary_button)
-            .padding([4, 8]);
+            .padding([8, 12]);
 
-        let action_bar = row![Space::new().width(Length::Fill), add_btn].width(Length::Fill);
+        let action_bar = row![search_ui, Space::new().width(Length::Fill), add_btn]
+            .align_y(Alignment::Center)
+            .spacing(15)
+            .width(Length::Fill);
+
+        let footer_text = text(format!("Total Staff: {}", self.employees.len()))
+            .font(Font {
+                weight: iced::font::Weight::Bold,
+                ..Default::default()
+            })
+            .size(16);
+
+        let bottom_bar = row![footer_text, Space::new().width(Length::Fill), pagination_ui]
+            .align_y(Alignment::Center)
+            .width(Length::Fill);
 
         let content = column![
             header,
-            Space::new().height(5.0),
+            Space::new().height(15.0),
             action_bar,
             Space::new().height(15.0),
-            employees_table(&self.employees)
+            employees_table(&self.page_data),
+            Space::new().height(15.0),
+            bottom_bar
         ]
         .spacing(0);
 
@@ -272,11 +368,9 @@ fn add_employee_form<'a>(draft: &'a DraftEmployee) -> Element<'a, EmployeesMessa
     let name_input = text_input("Full Name", &draft.name)
         .on_input(|v| EmployeesMessage::FieldChanged(EmployeeFormField::Name, v))
         .padding(10);
-
     let phone_input = text_input("Phone Number", &draft.phone)
         .on_input(|v| EmployeesMessage::FieldChanged(EmployeeFormField::Phone, v))
         .padding(10);
-
     let email_input = text_input("Email", &draft.email)
         .on_input(|v| EmployeesMessage::FieldChanged(EmployeeFormField::Email, v))
         .padding(10);
@@ -289,9 +383,7 @@ fn add_employee_form<'a>(draft: &'a DraftEmployee) -> Element<'a, EmployeesMessa
     .width(Length::Fill)
     .padding(10);
 
-    // Dynamic UI: Only show these inputs if Doctor or Registry is selected!
     let mut dynamic_fields = column![].spacing(10);
-
     if selected_role == Some("Doctor") {
         dynamic_fields = dynamic_fields
             .push(text("Specialty").size(14))
@@ -342,7 +434,7 @@ fn add_employee_form<'a>(draft: &'a DraftEmployee) -> Element<'a, EmployeesMessa
         email_input,
         Space::new().height(10.0),
         dynamic_fields,
-        Space::new().height(20.0), // Inject dynamic fields here!
+        Space::new().height(20.0),
         actions
     ]
     .spacing(5)

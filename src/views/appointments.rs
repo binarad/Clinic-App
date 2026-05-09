@@ -1,26 +1,24 @@
+use crate::components::shared::pagination::pagination;
+use crate::components::shared::search_bar::search_bar;
 use crate::database::models::{Appointment, Employee, Patient};
 use crate::database::operations::{
-    AppointmentPayload,
-    // Add update_appointment_db here later!
-    delete_appointment_db,
-    fetch_appointments_db,
-    fetch_registry_joined_db,
+    AppointmentPayload, delete_appointment_db, fetch_appointments_db, fetch_registry_joined_db,
     insert_appointment_db,
 };
 use crate::theme;
+
 use iced::widget::{Space, button, column, container, pick_list, row, table, text, text_input};
 use iced::{Alignment, Element, Font, Length};
 use iced_aw::helpers::date_picker;
 
 const STATUS_OPTIONS: &[&str] = &["Scheduled", "Completed", "Cancelled", "No Show"];
+const ITEMS_PER_PAGE: usize = 10;
 
-// Helper struct for Dropdowns
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelectOption {
     pub id: i32,
     pub name: String,
 }
-
 impl std::fmt::Display for SelectOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)
@@ -34,6 +32,10 @@ pub struct AppointmentsTab {
     pub appointments: Vec<Appointment>,
     pub active_modal: Option<AppointmentModal>,
     pub is_saving: bool,
+    pub search_query: String,
+    pub current_page: usize,
+    pub page_data: Vec<Appointment>,
+    pub total_pages: usize,
 }
 
 impl Default for AppointmentsTab {
@@ -85,6 +87,10 @@ pub enum AppointmentsMessage {
     AppointmentUpdated(Result<Appointment, String>),
     DeleteAppointment(i32),
     DeletedAppointment(Result<usize, String>, i32),
+    SearchChanged(String),
+    ClearSearch,
+    NextPage,
+    PreviousPage,
 }
 
 // ==========================================
@@ -92,11 +98,61 @@ pub enum AppointmentsMessage {
 // ==========================================
 impl AppointmentsTab {
     pub fn new() -> Self {
-        Self {
+        let mut tab = Self {
             appointments: fetch_appointments_db(),
             active_modal: None,
             is_saving: false,
-        }
+            search_query: String::new(),
+            current_page: 1,
+            page_data: Vec::new(),
+            total_pages: 1,
+        };
+        tab.sync_view();
+        tab
+    }
+
+    fn sync_view(&mut self) {
+        let query = self.search_query.to_lowercase();
+
+        let filtered: Vec<&Appointment> = self
+            .appointments
+            .iter()
+            .filter(|a| {
+                if query.is_empty() {
+                    return true;
+                }
+                let status_matches = a
+                    .status
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&query);
+                let reason_matches = a
+                    .reason
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&query);
+                let date_matches = a
+                    .appointment_date
+                    .map(|d| d.format("%Y-%m-%d").to_string())
+                    .unwrap_or_default()
+                    .contains(&query);
+                status_matches || reason_matches || date_matches
+            })
+            .collect();
+
+        let total_items = filtered.len();
+        self.total_pages = (total_items as f32 / ITEMS_PER_PAGE as f32).ceil() as usize;
+        self.current_page = self.current_page.min(self.total_pages.max(1));
+
+        let start_idx = (self.current_page.saturating_sub(1)) * ITEMS_PER_PAGE;
+        let end_idx = (start_idx + ITEMS_PER_PAGE).min(total_items);
+
+        self.page_data = filtered[start_idx..end_idx]
+            .iter()
+            .map(|&a| a.clone())
+            .collect();
     }
 
     fn get_mut_draft(&mut self) -> Option<&mut DraftAppointment> {
@@ -109,6 +165,31 @@ impl AppointmentsTab {
 
     pub fn update(&mut self, message: AppointmentsMessage) -> iced::Task<AppointmentsMessage> {
         match message {
+            AppointmentsMessage::SearchChanged(query) => {
+                self.search_query = query;
+                self.current_page = 1;
+                self.sync_view();
+                iced::Task::none()
+            }
+            AppointmentsMessage::ClearSearch => {
+                self.search_query.clear();
+                self.current_page = 1;
+                self.sync_view();
+                iced::Task::none()
+            }
+            AppointmentsMessage::NextPage => {
+                self.current_page += 1;
+                self.sync_view();
+                iced::Task::none()
+            }
+            AppointmentsMessage::PreviousPage => {
+                if self.current_page > 1 {
+                    self.current_page -= 1;
+                    self.sync_view();
+                }
+                iced::Task::none()
+            }
+
             AppointmentsMessage::OpenAddForm => {
                 let draft = DraftAppointment {
                     status: "Scheduled".to_string(),
@@ -180,65 +261,54 @@ impl AppointmentsTab {
                 }
                 iced::Task::none()
             }
-            AppointmentsMessage::SubmitForm => {
-                match &self.active_modal {
-                    Some(AppointmentModal::Add(draft)) => {
-                        if draft.patient_id.is_none()
-                            || draft.doctor_id.is_none()
-                            || draft.date.is_empty()
-                        {
-                            return iced::Task::none();
-                        }
-
-                        let parsed_date =
-                            chrono::NaiveDate::parse_from_str(&draft.date, "%Y-%m-%d")
-                                .ok()
-                                .and_then(|d| d.and_hms_opt(0, 0, 0));
-
-                        let payload_draft = draft.clone();
-                        self.is_saving = true;
-
-                        // Because the UI doesn't know who the registry worker is, we fetch the first one here!
-                        iced::Task::perform(
-                            async move {
-                                let registry_id = tokio::task::spawn_blocking(|| {
-                                    fetch_registry_joined_db()
-                                        .first()
-                                        .map(|(_, r)| r.employee_id)
-                                        .unwrap_or(1)
-                                })
-                                .await
-                                .unwrap_or(1);
-
-                                let payload = AppointmentPayload {
-                                    patient_id: payload_draft.patient_id.unwrap(),
-                                    doctor_id: payload_draft.doctor_id.unwrap(),
-                                    registry_id, // Dynamically fetched!
-                                    date: parsed_date,
-                                    time: payload_draft.time,
-                                    status: payload_draft.status,
-                                    reason: payload_draft.reason,
-                                };
-                                insert_appointment_db(payload).await
-                            },
-                            AppointmentsMessage::AppointmentAdded,
-                        )
+            AppointmentsMessage::SubmitForm => match &self.active_modal {
+                Some(AppointmentModal::Add(draft)) => {
+                    if draft.patient_id.is_none()
+                        || draft.doctor_id.is_none()
+                        || draft.date.is_empty()
+                    {
+                        return iced::Task::none();
                     }
-                    Some(AppointmentModal::Edit { .. }) => {
-                        // Add update logic here later
-                        iced::Task::none()
-                    }
-                    _ => iced::Task::none(),
+                    let parsed_date = chrono::NaiveDate::parse_from_str(&draft.date, "%Y-%m-%d")
+                        .ok()
+                        .and_then(|d| d.and_hms_opt(0, 0, 0));
+                    let payload_draft = draft.clone();
+                    self.is_saving = true;
+
+                    iced::Task::perform(
+                        async move {
+                            let registry_id = tokio::task::spawn_blocking(|| {
+                                fetch_registry_joined_db()
+                                    .first()
+                                    .map(|(_, r)| r.employee_id)
+                                    .unwrap_or(1)
+                            })
+                            .await
+                            .unwrap_or(1);
+
+                            let payload = AppointmentPayload {
+                                patient_id: payload_draft.patient_id.unwrap(),
+                                doctor_id: payload_draft.doctor_id.unwrap(),
+                                registry_id,
+                                date: parsed_date,
+                                time: payload_draft.time,
+                                status: payload_draft.status,
+                                reason: payload_draft.reason,
+                            };
+                            insert_appointment_db(payload).await
+                        },
+                        AppointmentsMessage::AppointmentAdded,
+                    )
                 }
-            }
+                Some(AppointmentModal::Edit { .. }) => iced::Task::none(),
+                _ => iced::Task::none(),
+            },
             AppointmentsMessage::AppointmentAdded(result) => {
                 self.is_saving = false;
-                match result {
-                    Ok(new_apt) => {
-                        self.appointments.push(new_apt);
-                        self.active_modal = None;
-                    }
-                    Err(e) => println!("🚨 DB ERROR: {}", e),
+                if let Ok(new_apt) = result {
+                    self.appointments.push(new_apt);
+                    self.active_modal = None;
+                    self.sync_view();
                 }
                 iced::Task::none()
             }
@@ -251,6 +321,7 @@ impl AppointmentsTab {
                         .position(|a| a.appointment_id == updated_apt.appointment_id)
                     {
                         self.appointments[idx] = updated_apt;
+                        self.sync_view();
                     }
                     self.active_modal = None;
                 }
@@ -264,6 +335,7 @@ impl AppointmentsTab {
             AppointmentsMessage::DeletedAppointment(result, deleted_id) => {
                 if result.is_ok() {
                     self.appointments.retain(|a| a.appointment_id != deleted_id);
+                    self.sync_view();
                 }
                 iced::Task::none()
             }
@@ -290,19 +362,49 @@ impl AppointmentsTab {
             .align_y(Alignment::Center)
             .width(Length::Fill);
 
+        let search_ui = search_bar(
+            &self.search_query,
+            "Search date, status, or reason...",
+            AppointmentsMessage::SearchChanged,
+            Some(AppointmentsMessage::ClearSearch),
+        );
+
+        let pagination_ui = pagination(
+            self.current_page,
+            self.total_pages,
+            AppointmentsMessage::PreviousPage,
+            AppointmentsMessage::NextPage,
+        );
+
         let add_btn = button(text("Book Appointment"))
             .on_press(AppointmentsMessage::OpenAddForm)
             .style(theme::primary_button)
-            .padding([4, 8]);
+            .padding([8, 12]);
 
-        let action_bar = row![Space::new().width(Length::Fill), add_btn].width(Length::Fill);
+        let action_bar = row![search_ui, Space::new().width(Length::Fill), add_btn]
+            .align_y(Alignment::Center)
+            .spacing(15)
+            .width(Length::Fill);
+
+        let footer_text = text(format!("Total Appointments: {}", self.appointments.len()))
+            .font(Font {
+                weight: iced::font::Weight::Bold,
+                ..Default::default()
+            })
+            .size(16);
+
+        let bottom_bar = row![footer_text, Space::new().width(Length::Fill), pagination_ui]
+            .align_y(Alignment::Center)
+            .width(Length::Fill);
 
         let content = column![
             header,
-            Space::new().height(5.0),
+            Space::new().height(15.0),
             action_bar,
             Space::new().height(15.0),
-            appointments_table(&self.appointments, patients, employees)
+            appointments_table(&self.page_data, patients, employees),
+            Space::new().height(15.0),
+            bottom_bar
         ]
         .spacing(0);
 
@@ -332,7 +434,6 @@ fn add_appointment_form<'a>(
             name: p.full_name.clone(),
         })
         .collect();
-
     let doctor_options: Vec<SelectOption> = employees
         .iter()
         .filter(|e| e.role == "Doctor")
@@ -356,14 +457,12 @@ fn add_appointment_form<'a>(
     .placeholder("Select Patient")
     .width(Length::Fill)
     .padding(10);
-
     let doctor_dropdown = pick_list(doctor_options, selected_doctor, |opt| {
         AppointmentsMessage::DoctorSelected(opt.id)
     })
     .placeholder("Select Doctor")
     .width(Length::Fill)
     .padding(10);
-
     let date_btn = button(text(if draft.date.is_empty() {
         "Select Date"
     } else {
@@ -373,18 +472,15 @@ fn add_appointment_form<'a>(
     .padding(10)
     .width(Length::Fill)
     .style(theme::secondary_button);
-
     let time_input = text_input("HH:MM", &draft.time)
         .on_input(|v| AppointmentsMessage::FieldChanged(AppointmentFormField::Time, v))
         .padding(10);
-
     let status_dropdown = pick_list(STATUS_OPTIONS.to_vec(), selected_status, |s| {
         AppointmentsMessage::FieldChanged(AppointmentFormField::Status, s.to_string())
     })
     .placeholder("Select Status")
     .width(Length::Fill)
     .padding(10);
-
     let reason_input = text_input("Reason for visit", &draft.reason)
         .on_input(|v| AppointmentsMessage::FieldChanged(AppointmentFormField::Reason, v))
         .padding(10);
@@ -432,7 +528,6 @@ fn add_appointment_form<'a>(
         .height(Length::Fill)
         .padding(30)
         .style(theme::main_background);
-
     let initial_date = chrono::NaiveDate::parse_from_str(&draft.date, "%Y-%m-%d")
         .unwrap_or_else(|_| chrono::Local::now().date_naive());
     date_picker(
@@ -537,7 +632,6 @@ fn appointments_table<'a>(
         )
         .width(Length::Fixed(150.0)),
     ];
-
     let data_table = table(columns, appointments).padding(10.0).separator_y(1.0);
     container(data_table)
         .width(Length::Fill)

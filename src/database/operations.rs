@@ -303,7 +303,6 @@ pub fn fetch_patient_db() -> Vec<Patient> {
     let connection = &mut establish_connection();
 
     patient
-        .limit(15)
         .select(Patient::as_select())
         .load(connection)
         .expect("Error loading patients")
