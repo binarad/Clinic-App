@@ -19,6 +19,7 @@ pub struct SelectOption {
     pub id: i32,
     pub name: String,
 }
+
 impl std::fmt::Display for SelectOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)
@@ -32,10 +33,16 @@ pub struct AppointmentsTab {
     pub appointments: Vec<Appointment>,
     pub active_modal: Option<AppointmentModal>,
     pub is_saving: bool,
+
+    // Search & Pagination State
     pub search_query: String,
     pub current_page: usize,
     pub page_data: Vec<Appointment>,
     pub total_pages: usize,
+
+    // Filter State
+    pub filter_status: Option<String>,
+    pub filter_doctor: Option<i32>,
 }
 
 impl Default for AppointmentsTab {
@@ -82,15 +89,24 @@ pub enum AppointmentsMessage {
     OpenDatePicker,
     CancelDatePicker,
     DateSelected(iced_aw::core::date::Date),
+
+    // Async
     SubmitForm,
     AppointmentAdded(Result<Appointment, String>),
     AppointmentUpdated(Result<Appointment, String>),
     DeleteAppointment(i32),
     DeletedAppointment(Result<usize, String>, i32),
+
+    // Search bar & pagination
     SearchChanged(String),
     ClearSearch,
     NextPage,
     PreviousPage,
+
+    // Filters
+    StatusFilterChanged(String),
+    DoctorFilterChanged(i32), // Using i32 here makes matching the ID much easier!
+    ResetFilters,
 }
 
 // ==========================================
@@ -106,11 +122,14 @@ impl AppointmentsTab {
             current_page: 1,
             page_data: Vec::new(),
             total_pages: 1,
+            filter_status: None,
+            filter_doctor: None,
         };
         tab.sync_view();
         tab
     }
 
+    /// Calculates the current page data based on text search AND dropdown filters
     fn sync_view(&mut self) {
         let query = self.search_query.to_lowercase();
 
@@ -118,30 +137,40 @@ impl AppointmentsTab {
             .appointments
             .iter()
             .filter(|a| {
-                if query.is_empty() {
-                    return true;
-                }
-                let status_matches = a
-                    .status
-                    .as_deref()
-                    .unwrap_or("")
-                    .to_lowercase()
-                    .contains(&query);
-                let reason_matches = a
-                    .reason
-                    .as_deref()
-                    .unwrap_or("")
-                    .to_lowercase()
-                    .contains(&query);
-                let date_matches = a
-                    .appointment_date
-                    .map(|d| d.format("%Y-%m-%d").to_string())
-                    .unwrap_or_default()
-                    .contains(&query);
-                status_matches || reason_matches || date_matches
+                // 1. Text Search Filter (Checks Status, Reason, and Date)
+                let search_matches = if query.is_empty() {
+                    true
+                } else {
+                    let status = a.status.as_deref().unwrap_or("").to_lowercase();
+                    let reason = a.reason.as_deref().unwrap_or("").to_lowercase();
+                    let date = a
+                        .appointment_date
+                        .map(|d| d.format("%Y-%m-%d").to_string())
+                        .unwrap_or_default();
+
+                    status.contains(&query) || reason.contains(&query) || date.contains(&query)
+                };
+
+                // 2. Dropdown Status Filter
+                let status_matches = match &self.filter_status {
+                    Some(s) if s == "All Statuses" => true,
+                    Some(s) => a.status.as_deref() == Some(s.as_str()),
+                    None => true,
+                };
+
+                // 3. Dropdown Doctor Filter
+                let doctor_matches = match self.filter_doctor {
+                    Some(-1) => true, // -1 represents "All Doctors"
+                    Some(id) => a.doctor_id == id,
+                    None => true,
+                };
+
+                // An appointment must pass ALL THREE filters to be shown!
+                search_matches && status_matches && doctor_matches
             })
             .collect();
 
+        // Calculate pages
         let total_items = filtered.len();
         self.total_pages = (total_items as f32 / ITEMS_PER_PAGE as f32).ceil() as usize;
         self.current_page = self.current_page.min(self.total_pages.max(1));
@@ -149,6 +178,7 @@ impl AppointmentsTab {
         let start_idx = (self.current_page.saturating_sub(1)) * ITEMS_PER_PAGE;
         let end_idx = (start_idx + ITEMS_PER_PAGE).min(total_items);
 
+        // Slice for current page
         self.page_data = filtered[start_idx..end_idx]
             .iter()
             .map(|&a| a.clone())
@@ -165,6 +195,29 @@ impl AppointmentsTab {
 
     pub fn update(&mut self, message: AppointmentsMessage) -> iced::Task<AppointmentsMessage> {
         match message {
+            // --- FILTER MESSAGES ---
+            AppointmentsMessage::StatusFilterChanged(s) => {
+                self.filter_status = Some(s);
+                self.current_page = 1;
+                self.sync_view();
+                iced::Task::none()
+            }
+            AppointmentsMessage::DoctorFilterChanged(id) => {
+                self.filter_doctor = Some(id);
+                self.current_page = 1;
+                self.sync_view();
+                iced::Task::none()
+            }
+            AppointmentsMessage::ResetFilters => {
+                self.filter_status = None;
+                self.filter_doctor = None;
+                self.search_query.clear();
+                self.current_page = 1;
+                self.sync_view();
+                iced::Task::none()
+            }
+
+            // --- SEARCH & PAGINATION MESSAGES ---
             AppointmentsMessage::SearchChanged(query) => {
                 self.search_query = query;
                 self.current_page = 1;
@@ -190,6 +243,7 @@ impl AppointmentsTab {
                 iced::Task::none()
             }
 
+            // --- FORM MESSAGES ---
             AppointmentsMessage::OpenAddForm => {
                 let draft = DraftAppointment {
                     status: "Scheduled".to_string(),
@@ -362,6 +416,30 @@ impl AppointmentsTab {
             .align_y(Alignment::Center)
             .width(Length::Fill);
 
+        // 1. Prepare Filter Options
+        let mut doctor_options = vec![SelectOption {
+            id: -1,
+            name: "All Doctors".to_string(),
+        }];
+        doctor_options.extend(employees.iter().filter(|e| e.role == "Doctor").map(|e| {
+            SelectOption {
+                id: e.employee_id,
+                name: e.full_name.clone(),
+            }
+        }));
+
+        let mut status_options = vec!["All Statuses".to_string()];
+        status_options.extend(STATUS_OPTIONS.iter().map(|s| s.to_string()));
+
+        // 2. Determine currently selected items
+        let selected_doctor = doctor_options
+            .iter()
+            .find(|o| Some(o.id) == self.filter_doctor)
+            .cloned();
+
+        let selected_status = self.filter_status.clone();
+
+        // 3. Build UI Controls
         let search_ui = search_bar(
             &self.search_query,
             "Search date, status, or reason...",
@@ -369,22 +447,52 @@ impl AppointmentsTab {
             Some(AppointmentsMessage::ClearSearch),
         );
 
-        let pagination_ui = pagination(
-            self.current_page,
-            self.total_pages,
-            AppointmentsMessage::PreviousPage,
-            AppointmentsMessage::NextPage,
-        );
+        let status_filter = pick_list(
+            status_options,
+            selected_status,
+            AppointmentsMessage::StatusFilterChanged,
+        )
+        .placeholder("Filter Status")
+        .width(Length::Fixed(150.0))
+        .padding(8);
+
+        let doctor_filter = pick_list(doctor_options, selected_doctor, |opt| {
+            AppointmentsMessage::DoctorFilterChanged(opt.id)
+        })
+        .placeholder("Filter Doctor")
+        .width(Length::Fixed(200.0))
+        .padding(8);
+
+        let reset_btn = button(text("Reset"))
+            .on_press(AppointmentsMessage::ResetFilters)
+            .style(theme::secondary_button)
+            .padding([8, 12]);
 
         let add_btn = button(text("Book Appointment"))
             .on_press(AppointmentsMessage::OpenAddForm)
             .style(theme::primary_button)
             .padding([8, 12]);
 
-        let action_bar = row![search_ui, Space::new().width(Length::Fill), add_btn]
-            .align_y(Alignment::Center)
-            .spacing(15)
-            .width(Length::Fill);
+        // Stack the search and filters next to each other
+        let action_bar = row![
+            search_ui,
+            status_filter,
+            doctor_filter,
+            reset_btn,
+            Space::new().width(Length::Fill),
+            add_btn
+        ]
+        .align_y(Alignment::Center)
+        .spacing(15)
+        .width(Length::Fill);
+
+        // 4. Build Pagination and Footer
+        let pagination_ui = pagination(
+            self.current_page,
+            self.total_pages,
+            AppointmentsMessage::PreviousPage,
+            AppointmentsMessage::NextPage,
+        );
 
         let footer_text = text(format!("Total Appointments: {}", self.appointments.len()))
             .font(Font {
@@ -397,6 +505,7 @@ impl AppointmentsTab {
             .align_y(Alignment::Center)
             .width(Length::Fill);
 
+        // 5. Assemble layout
         let content = column![
             header,
             Space::new().height(15.0),
@@ -434,6 +543,7 @@ fn add_appointment_form<'a>(
             name: p.full_name.clone(),
         })
         .collect();
+
     let doctor_options: Vec<SelectOption> = employees
         .iter()
         .filter(|e| e.role == "Doctor")
@@ -457,12 +567,14 @@ fn add_appointment_form<'a>(
     .placeholder("Select Patient")
     .width(Length::Fill)
     .padding(10);
+
     let doctor_dropdown = pick_list(doctor_options, selected_doctor, |opt| {
         AppointmentsMessage::DoctorSelected(opt.id)
     })
     .placeholder("Select Doctor")
     .width(Length::Fill)
     .padding(10);
+
     let date_btn = button(text(if draft.date.is_empty() {
         "Select Date"
     } else {
@@ -472,15 +584,18 @@ fn add_appointment_form<'a>(
     .padding(10)
     .width(Length::Fill)
     .style(theme::secondary_button);
+
     let time_input = text_input("HH:MM", &draft.time)
         .on_input(|v| AppointmentsMessage::FieldChanged(AppointmentFormField::Time, v))
         .padding(10);
+
     let status_dropdown = pick_list(STATUS_OPTIONS.to_vec(), selected_status, |s| {
         AppointmentsMessage::FieldChanged(AppointmentFormField::Status, s.to_string())
     })
     .placeholder("Select Status")
     .width(Length::Fill)
     .padding(10);
+
     let reason_input = text_input("Reason for visit", &draft.reason)
         .on_input(|v| AppointmentsMessage::FieldChanged(AppointmentFormField::Reason, v))
         .padding(10);
@@ -528,8 +643,10 @@ fn add_appointment_form<'a>(
         .height(Length::Fill)
         .padding(30)
         .style(theme::main_background);
+
     let initial_date = chrono::NaiveDate::parse_from_str(&draft.date, "%Y-%m-%d")
         .unwrap_or_else(|_| chrono::Local::now().date_naive());
+
     date_picker(
         draft.show_picker,
         initial_date,
@@ -632,7 +749,9 @@ fn appointments_table<'a>(
         )
         .width(Length::Fixed(150.0)),
     ];
+
     let data_table = table(columns, appointments).padding(10.0).separator_y(1.0);
+
     container(data_table)
         .width(Length::Fill)
         .height(Length::Fill)
