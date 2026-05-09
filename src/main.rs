@@ -1,8 +1,9 @@
 use iced::Element;
-use iced::widget::{container, row, text};
+use iced::widget::{container, row};
 
 use crate::components::sidebar::{self, Tab};
 use crate::views::appointments::{AppointmentsMessage, AppointmentsTab};
+use crate::views::dashboard::{DashboardMessage, DashboardTab};
 use crate::views::employees::{EmployeesMessage, EmployeesTab};
 use crate::views::patients::{PatientsMessage, PatientsTab};
 use crate::views::registry::{RegistryMessage, RegistryTab};
@@ -12,19 +13,10 @@ pub mod database;
 pub mod theme;
 pub mod views;
 
-#[derive(Debug, Clone, Default)]
-pub struct DraftEmployee {
-    pub name: String,
-    pub phone: String,
-    pub email: String,
-    pub role: Option<String>,
-}
-
-// Helper to grab the mutable draft during updates
-
 #[derive(Debug, Clone)]
 enum Message {
     Sidebar(sidebar::Message),
+    DashboardView(DashboardMessage),
     EmployeeView(EmployeesMessage),
     PatientView(PatientsMessage),
     AppointmentView(AppointmentsMessage),
@@ -32,6 +24,7 @@ enum Message {
 }
 
 pub struct ClinicApp {
+    pub dashboard_tab: DashboardTab,
     pub patients_tab: PatientsTab,
     pub employees_tab: EmployeesTab,
     pub appointments_tab: AppointmentsTab,
@@ -43,6 +36,7 @@ pub struct ClinicApp {
 impl ClinicApp {
     fn new() -> Self {
         Self {
+            dashboard_tab: DashboardTab::new(),
             patients_tab: PatientsTab::new(),
             employees_tab: EmployeesTab::new(),
             appointments_tab: AppointmentsTab::new(),
@@ -56,6 +50,11 @@ impl ClinicApp {
         match message {
             Message::Sidebar(sidebar::Message::SelectedTab(new_tab)) => {
                 self.active_tab = new_tab;
+            }
+
+            // DASHBOARD VIEW
+            Message::DashboardView(msg) => {
+                return self.dashboard_tab.update(msg).map(Message::DashboardView);
             }
 
             // EMPLOYEES VIEW
@@ -87,10 +86,21 @@ impl ClinicApp {
 
             // APPOINTMENTS VIEW
             Message::AppointmentView(msg) => {
-                return self
+                let needs_dash_refresh = matches!(
+                    &msg,
+                    AppointmentsMessage::AppointmentAdded(Ok(_))
+                        | AppointmentsMessage::DeletedAppointment(Ok(_), _)
+                );
+
+                let task = self
                     .appointments_tab
                     .update(msg)
                     .map(Message::AppointmentView);
+                if needs_dash_refresh {
+                    let _ = self.dashboard_tab.update(DashboardMessage::Refresh);
+                }
+
+                return task;
             }
 
             // REGISTRY VIEW
@@ -106,11 +116,8 @@ impl ClinicApp {
 
         // 2. Render the main content area dynamically
         let content_view: Element<Message> = match self.active_tab {
-            Tab::Dashboard => text("Dashboard View").size(30).into(),
-
-            // Map the patient table!
+            Tab::Dashboard => self.dashboard_tab.view().map(Message::DashboardView),
             Tab::Patients => self.patients_tab.view().map(Message::PatientView),
-
             Tab::Employees => self.employees_tab.view().map(Message::EmployeeView),
             Tab::Appointments => self
                 .appointments_tab
