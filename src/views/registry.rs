@@ -7,7 +7,7 @@ use crate::theme;
 use iced::widget::{Space, column, container, row, table, text};
 use iced::{Alignment, Element, Font, Length};
 
-const ITEMS_PER_PAGE: usize = 10;
+const ITEMS_PER_PAGE: usize = 14;
 
 // ==========================================
 // STATE & MESSAGES
@@ -39,6 +39,7 @@ pub enum RegistryMessage {
 // COMPONENT LOGIC
 // ==========================================
 impl RegistryTab {
+    #[must_use] 
     pub fn new() -> Self {
         let mut tab = Self {
             workers: fetch_registry_joined_db(),
@@ -176,7 +177,7 @@ impl RegistryTab {
 // ==========================================
 // UI HELPERS
 // ==========================================
-fn registry_table<'a>(workers: &'a [(Employee, RegistryWorker)]) -> Element<'a, RegistryMessage> {
+fn registry_table(workers: &[(Employee, RegistryWorker)]) -> Element<'_, RegistryMessage> {
     let columns = vec![
         table::column(
             text("ID").font(Font {
@@ -201,9 +202,7 @@ fn registry_table<'a>(workers: &'a [(Employee, RegistryWorker)]) -> Element<'a, 
             }),
             |(_, r): &(Employee, RegistryWorker)| {
                 Element::from(text(
-                    r.window_number
-                        .map(|w| w.to_string())
-                        .unwrap_or_else(|| "N/A".to_string()),
+                    r.window_number.map_or_else(|| "N/A".to_string(), |w| w.to_string()),
                 ))
             },
         )

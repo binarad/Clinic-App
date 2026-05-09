@@ -1,9 +1,11 @@
 // HERE WILL BE ALL DATABASE MAGIC THINGS
 use crate::database::models::{
-    Appointment, Doctor, Employee, NewAppointment, NewDoctor, NewEmployee, NewPatient,
-    NewRegistryWorker, Patient, RegistryWorker,
+    Appointment, Doctor, Employee, MedicalRecord, NewAppointment, NewDoctor, NewEmployee,
+    NewPatient, NewRecordEntry, NewRegistryWorker, Patient, RecordEntry, RegistryWorker,
 };
-use crate::database::schema::{appointment, doctor, employee, patient, registry};
+use crate::database::schema::{
+    appointment, doctor, employee, medical_record, patient, record_entry, registry,
+};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use dotenvy::dotenv;
@@ -53,10 +55,10 @@ pub async fn insert_employee_db(
             .values(&new_emp)
             .returning(Employee::as_select())
             .get_result(&mut conn)
-            .map_err(|e| format!("Database insertion failed: {}", e))
+            .map_err(|e| format!("Database insertion failed: {e}"))
     })
     .await
-    .map_err(|e| format!("Task panicked: {}", e))?
+    .map_err(|e| format!("Task panicked: {e}"))?
 }
 
 pub async fn insert_doctor_db(
@@ -113,10 +115,10 @@ pub async fn insert_doctor_db(
 
             Ok((inserted_emp, inserted_doc))
         })
-        .map_err(|e| format!("Transaction failed: {}", e))
+        .map_err(|e| format!("Transaction failed: {e}"))
     })
     .await
-    .map_err(|e| format!("Task panicked: {}", e))?
+    .map_err(|e| format!("Task panicked: {e}"))?
 }
 
 pub async fn insert_registry_worker_db(
@@ -169,24 +171,25 @@ pub async fn insert_registry_worker_db(
             // 3. Return both structs
             Ok((inserted_emp, inserted_reg))
         })
-        .map_err(|e| format!("Transaction failed: {}", e))
+        .map_err(|e| format!("Transaction failed: {e}"))
     })
     .await
-    .map_err(|e| format!("Task panicked: {}", e))?
+    .map_err(|e| format!("Task panicked: {e}"))?
 }
 
+#[must_use] 
 pub fn fetch_all_employees_db() -> Vec<Employee> {
-    use crate::database::schema::employee::dsl::*;
+    use crate::database::schema::employee::dsl::employee;
 
     let connection = &mut establish_connection();
 
     employee
-        .limit(15)
         .select(Employee::as_select())
         .load(connection)
         .expect("Error loading employee")
 }
 
+#[must_use] 
 pub fn fetch_doctors_joined_db() -> Vec<(Employee, Doctor)> {
     let mut conn = establish_connection();
 
@@ -198,6 +201,7 @@ pub fn fetch_doctors_joined_db() -> Vec<(Employee, Doctor)> {
 }
 
 /// Fetches all Registry Workers joined with their Base Employee data
+#[must_use] 
 pub fn fetch_registry_joined_db() -> Vec<(Employee, RegistryWorker)> {
     let mut conn = establish_connection();
 
@@ -205,7 +209,6 @@ pub fn fetch_registry_joined_db() -> Vec<(Employee, RegistryWorker)> {
         .inner_join(registry::table)
         // TELL DIESEL EXACTLY HOW TO MAP THE COLUMNS:
         .select((Employee::as_select(), RegistryWorker::as_select()))
-        .limit(15)
         .load::<(Employee, RegistryWorker)>(&mut conn)
         .unwrap_or_default()
 }
@@ -218,7 +221,7 @@ pub async fn update_employee_db(
     new_email: String,
 ) -> Result<Employee, String> {
     tokio::task::spawn_blocking(move || {
-        use crate::database::schema::employee::dsl::*;
+        use crate::database::schema::employee::dsl::{employee, employee_id, role, full_name, phone, email};
 
         let conn = &mut establish_connection();
 
@@ -244,10 +247,10 @@ pub async fn update_employee_db(
             ))
             .returning(Employee::as_select()) // Return the newly updated row
             .get_result(conn)
-            .map_err(|e| format!("Database update failed: {}", e))
+            .map_err(|e| format!("Database update failed: {e}"))
     })
     .await
-    .map_err(|e| format!("Task panicked: {}", e))?
+    .map_err(|e| format!("Task panicked: {e}"))?
 }
 pub async fn delete_employee(target_id: i32) -> Result<usize, String> {
     tokio::task::spawn_blocking(move || {
@@ -291,14 +294,15 @@ pub async fn delete_employee(target_id: i32) -> Result<usize, String> {
             )
             .execute(conn)
         })
-        .map_err(|e| format!("Cascade delete failed: {}", e))
+        .map_err(|e| format!("Cascade delete failed: {e}"))
     })
     .await
-    .map_err(|e| format!("Task panicked: {}", e))?
+    .map_err(|e| format!("Task panicked: {e}"))?
 }
 
+#[must_use] 
 pub fn fetch_patient_db() -> Vec<Patient> {
-    use crate::database::schema::patient::dsl::*;
+    use crate::database::schema::patient::dsl::patient;
 
     let connection = &mut establish_connection();
 
@@ -307,6 +311,7 @@ pub fn fetch_patient_db() -> Vec<Patient> {
         .load(connection)
         .expect("Error loading patients")
 }
+
 pub async fn insert_patient_db(
     full_name: String,
     phone: String,
@@ -341,10 +346,10 @@ pub async fn insert_patient_db(
             .values(&new_patient)
             .returning(Patient::as_returning())
             .get_result(&mut conn)
-            .map_err(|e| format!("Database insertion failed: {}", e))
+            .map_err(|e| format!("Database insertion failed: {e}"))
     })
     .await
-    .map_err(|e| format!("Task panicked: {}", e))?
+    .map_err(|e| format!("Task panicked: {e}"))?
 }
 
 pub async fn edit_patient_db(
@@ -354,7 +359,7 @@ pub async fn edit_patient_db(
     new_address: String,
     new_birth_date: Option<NaiveDateTime>,
 ) -> Result<Patient, String> {
-    use crate::database::schema::patient::dsl::*;
+    use crate::database::schema::patient::dsl::{patient, patient_id, full_name, phone, address, birth_date};
 
     tokio::task::spawn_blocking(move || {
         let mut conn = establish_connection();
@@ -380,10 +385,10 @@ pub async fn edit_patient_db(
             ))
             .returning(Patient::as_returning())
             .get_result(&mut conn)
-            .map_err(|e| format!("Database update failed: {}", e))
+            .map_err(|e| format!("Database update failed: {e}"))
     })
     .await
-    .map_err(|e| format!("Task panicked: {}", e))?
+    .map_err(|e| format!("Task panicked: {e}"))?
 }
 
 /// Deletes a Patient and all of their associated relational data safely
@@ -400,14 +405,6 @@ pub async fn delete_patient_db(target_id: i32) -> Result<usize, String> {
             )
             .execute(conn)?;
 
-            // ==========================================
-            // 🚨 MEDICAL RECORDS WARNING 🚨
-            // Because our SQL script inserted Medical Records for these patients,
-            // SQLite will ALSO block deletion until those are removed.
-            // If your schema.rs already has medical_record and record_entry,
-            // uncomment this block to safely delete those too!
-            // ==========================================
-            /*
             // A. Find the patient's medical records to get their IDs
             let record_ids: Vec<i32> = crate::database::schema::medical_record::table
                 .filter(crate::database::schema::medical_record::patient_id.eq(target_id))
@@ -415,15 +412,19 @@ pub async fn delete_patient_db(target_id: i32) -> Result<usize, String> {
                 .load::<i32>(conn)?;
 
             // B. Delete all entries inside those records
-            diesel::delete(crate::database::schema::record_entry::table
-                .filter(crate::database::schema::record_entry::record_number.eq_any(&record_ids)))
-                .execute(conn)?;
+            diesel::delete(
+                crate::database::schema::record_entry::table.filter(
+                    crate::database::schema::record_entry::record_number.eq_any(&record_ids),
+                ),
+            )
+            .execute(conn)?;
 
             // C. Delete the medical records themselves
-            diesel::delete(crate::database::schema::medical_record::table
-                .filter(crate::database::schema::medical_record::patient_id.eq(target_id)))
-                .execute(conn)?;
-            */
+            diesel::delete(
+                crate::database::schema::medical_record::table
+                    .filter(crate::database::schema::medical_record::patient_id.eq(target_id)),
+            )
+            .execute(conn)?;
 
             // 2. Finally, delete the Base Patient record
             diesel::delete(
@@ -432,10 +433,10 @@ pub async fn delete_patient_db(target_id: i32) -> Result<usize, String> {
             )
             .execute(conn)
         })
-        .map_err(|e| format!("Cascade delete failed: {}", e))
+        .map_err(|e| format!("Cascade delete failed: {e}"))
     })
     .await
-    .map_err(|e| format!("Task panicked: {}", e))?
+    .map_err(|e| format!("Task panicked: {e}"))?
 }
 
 pub async fn insert_appointment_db(payload: AppointmentPayload) -> Result<Appointment, String> {
@@ -474,10 +475,10 @@ pub async fn insert_appointment_db(payload: AppointmentPayload) -> Result<Appoin
             .values(&new_apt)
             .returning(Appointment::as_returning())
             .get_result(&mut conn)
-            .map_err(|e| format!("Database insertion failed: {}", e))
+            .map_err(|e| format!("Database insertion failed: {e}"))
     })
     .await
-    .map_err(|e| format!("Task panicked: {}", e))?
+    .map_err(|e| format!("Task panicked: {e}"))?
 }
 
 pub async fn update_appointment_db(
@@ -485,7 +486,7 @@ pub async fn update_appointment_db(
     payload: AppointmentPayload,
 ) -> Result<Appointment, String> {
     tokio::task::spawn_blocking(move || {
-        use crate::database::schema::appointment::dsl::*;
+        use crate::database::schema::appointment::dsl::{appointment, appointment_id, patient_id, doctor_id, registry_id, appointment_date, appointment_time, status, reason};
         let mut conn = establish_connection();
 
         // Convert empty UI strings into SQL NULLs (using .clone() since we own the strings here)
@@ -518,14 +519,15 @@ pub async fn update_appointment_db(
             ))
             .returning(Appointment::as_returning())
             .get_result(&mut conn)
-            .map_err(|e| format!("Database update failed: {}", e))
+            .map_err(|e| format!("Database update failed: {e}"))
     })
     .await
-    .map_err(|e| format!("Task panicked: {}", e))?
+    .map_err(|e| format!("Task panicked: {e}"))?
 }
 
+#[must_use] 
 pub fn fetch_appointments_db() -> Vec<Appointment> {
-    use crate::database::schema::appointment::dsl::*;
+    use crate::database::schema::appointment::dsl::appointment;
     let mut conn = establish_connection();
 
     appointment
@@ -535,21 +537,127 @@ pub fn fetch_appointments_db() -> Vec<Appointment> {
 
 pub async fn delete_appointment_db(target_id: i32) -> Result<usize, String> {
     tokio::task::spawn_blocking(move || {
-        use crate::database::schema::appointment::dsl::*;
+        use crate::database::schema::appointment::dsl::{appointment, appointment_id};
         let mut conn = establish_connection();
 
         diesel::delete(appointment.filter(appointment_id.eq(target_id)))
             .execute(&mut conn)
-            .map_err(|e| format!("Error deleting appointment: {}", e))
+            .map_err(|e| format!("Error deleting appointment: {e}"))
     })
     .await
-    .map_err(|e| format!("Task panicked: {}", e))?
+    .map_err(|e| format!("Task panicked: {e}"))?
 }
 
+// ==========================================
+// MEDICAL RECORD OPERATIONS
+// ==========================================
+
+// Fetches all base medical records
+#[must_use] 
+pub fn fetch_all_medical_records_db() -> Vec<MedicalRecord> {
+    let mut conn = establish_connection();
+    medical_record::table
+        .load::<MedicalRecord>(&mut conn)
+        .unwrap_or_else(|_| vec![])
+}
+
+// Creates a new empty Medical record for a Patient (Useful if they don't have one yet)
+pub async fn insert_medical_record_db(patient_id: i32) -> Result<MedicalRecord, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut conn = establish_connection();
+        let now = chrono::Local::now().naive_local();
+
+        diesel::insert_into(medical_record::table)
+            .values((
+                medical_record::patient_id.eq(patient_id),
+                medical_record::creation_date.eq(now),
+            ))
+            .get_result::<MedicalRecord>(&mut conn)
+            .map_err(|e| format!("Failed to create medical record: {e}"))
+    })
+    .await
+    .map_err(|e| format!("Task panicked: {e}"))?
+}
+
+// ==========================================
+// RECORD ENTRY OPERATIONS
+// ==========================================
+
+// Fetches only the entries for a specific medical record
+#[must_use] 
+pub fn fetch_entries_for_record_db(target_record_number: i32) -> Vec<RecordEntry> {
+    let mut conn = establish_connection();
+
+    record_entry::table
+        .filter(record_entry::record_number.eq(target_record_number))
+        .order(record_entry::entry_date.desc())
+        .load::<RecordEntry>(&mut conn)
+        .unwrap_or_else(|_| vec![])
+}
+
+// Adds a new historical entry to a medical record
+pub async fn insert_record_entry_db(payload: NewRecordEntry) -> Result<RecordEntry, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut conn = establish_connection();
+
+        diesel::insert_into(record_entry::table)
+            .values(&payload)
+            .get_result::<RecordEntry>(&mut conn)
+            .map_err(|e| format!("Failed to insert record entry: {e}"))
+    })
+    .await
+    .map_err(|e| format!("Task panicked: {e}"))?
+}
+
+// Updates an existing record entry
+pub async fn update_record_entry_db(
+    target_entry_id: i32,
+    new_diagnosis: String,
+    new_complaints: String,
+) -> Result<RecordEntry, String> {
+    tokio::task::spawn_blocking(move || {
+        use crate::database::schema::record_entry::dsl::{record_entry, entry_id, diagnosis, complaints};
+        let mut conn = establish_connection();
+
+        let diag_opt = if new_diagnosis.trim().is_empty() {
+            None
+        } else {
+            Some(new_diagnosis)
+        };
+        let comp_opt = if new_complaints.trim().is_empty() {
+            None
+        } else {
+            Some(new_complaints)
+        };
+
+        diesel::update(record_entry.filter(entry_id.eq(target_entry_id)))
+            .set((diagnosis.eq(diag_opt), complaints.eq(comp_opt)))
+            .returning(RecordEntry::as_returning())
+            .get_result(&mut conn)
+            .map_err(|e| format!("Failed to update entry: {e}"))
+    })
+    .await
+    .map_err(|e| format!("Task panicked: {e}"))?
+}
+
+// Safely deletes a specific record entry
+pub async fn delete_record_entry_db(target_entry_id: i32) -> Result<usize, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut conn = establish_connection();
+
+        diesel::delete(record_entry::table.filter(record_entry::entry_id.eq(target_entry_id)))
+            .execute(&mut conn)
+            .map_err(|e| format!("Failed to delete entry: {e}"))
+    })
+    .await
+    .map_err(|e| format!("Task panicked: {e}"))?
+}
+
+#[must_use] 
 pub fn establish_connection() -> SqliteConnection {
     dotenv().ok();
 
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     SqliteConnection::establish(&database_url)
-        .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
+        .unwrap_or_else(|_| panic!("Error connecting to {database_url}"))
 }

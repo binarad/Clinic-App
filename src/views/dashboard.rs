@@ -32,6 +32,7 @@ pub enum DashboardMessage {
 // COMPONENT LOGIC
 // ==========================================
 impl DashboardTab {
+    #[must_use] 
     pub fn new() -> Self {
         let mut tab = Self {
             total_patients: 0,
@@ -79,15 +80,11 @@ impl DashboardTab {
             .map(|apt| {
                 let patient_name = patients
                     .iter()
-                    .find(|p| p.patient_id == apt.patient_id)
-                    .map(|p| p.full_name.clone())
-                    .unwrap_or_else(|| "Unknown".to_string());
+                    .find(|p| p.patient_id == apt.patient_id).map_or_else(|| "Unknown".to_string(), |p| p.full_name.clone());
 
                 let doctor_name = staff
                     .iter()
-                    .find(|e| e.employee_id == apt.doctor_id)
-                    .map(|e| e.full_name.clone())
-                    .unwrap_or_else(|| "Unknown".to_string());
+                    .find(|e| e.employee_id == apt.doctor_id).map_or_else(|| "Unknown".to_string(), |e| e.full_name.clone());
 
                 (apt, patient_name, doctor_name)
             })
@@ -150,7 +147,7 @@ impl DashboardTab {
 // ==========================================
 // UI HELPERS
 // ==========================================
-fn summary_card<'a>(title: &'a str, count: usize) -> Element<'a, DashboardMessage> {
+fn summary_card(title: &str, count: usize) -> Element<'_, DashboardMessage> {
     let title_text = text(title)
         .size(18)
         .color(iced::Color::from_rgb(0.4, 0.4, 0.4));
@@ -172,9 +169,9 @@ fn summary_card<'a>(title: &'a str, count: usize) -> Element<'a, DashboardMessag
         .into()
 }
 
-fn upcoming_table<'a>(
-    appointments: &'a [(Appointment, String, String)],
-) -> Element<'a, DashboardMessage> {
+fn upcoming_table(
+    appointments: &[(Appointment, String, String)],
+) -> Element<'_, DashboardMessage> {
     if appointments.is_empty() {
         return container(
             text("No upcoming appointments scheduled.")
@@ -199,7 +196,7 @@ fn upcoming_table<'a>(
                     .map(|d| d.format("%b %d, %Y").to_string())
                     .unwrap_or_default();
                 let time = a.appointment_time.clone().unwrap_or_default();
-                Element::from(text(format!("{} at {}", date, time)))
+                Element::from(text(format!("{date} at {time}")))
             },
         )
         .width(Length::Fixed(200.0)),

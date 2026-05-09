@@ -9,7 +9,7 @@ use iced::widget::{Space, button, column, container, row, table, text, text_inpu
 use iced::{Alignment, Element, Font, Length};
 use iced_aw::helpers::date_picker; // <-- Import the helper!
 
-const ITEMS_PER_PAGE: usize = 15;
+const ITEMS_PER_PAGE: usize = 14;
 // =================================
 // STATE & DRAFTS
 // =================================
@@ -81,6 +81,7 @@ impl Default for PatientsTab {
     }
 }
 impl PatientsTab {
+    #[must_use]
     pub fn new() -> Self {
         let mut tab = Self {
             patients: fetch_patient_db(),
@@ -132,8 +133,7 @@ impl PatientsTab {
     // Helper to grab the mutable patient draft
     fn get_mut_draft(&mut self) -> Option<&mut DraftPatient> {
         match &mut self.active_modal {
-            Some(PatientModal::Add(draft)) => Some(draft),
-            Some(PatientModal::Edit { draft, .. }) => Some(draft),
+            Some(PatientModal::Add(draft)) | Some(PatientModal::Edit { draft, .. }) => Some(draft),
             _ => None,
         }
     }
@@ -343,7 +343,7 @@ impl PatientsTab {
         );
 
         let total_count = self.patients.len(); // Or use filtered_patients.len() if you calculated it!
-        let footer_text = text(format!("Total Patients: {}", total_count))
+        let footer_text = text(format!("Total Patients: {total_count}"))
             .font(Font {
                 weight: iced::font::Weight::Bold,
                 ..Default::default()
@@ -389,7 +389,7 @@ impl PatientsTab {
 // =============
 // DATA TABLE
 // =============
-pub fn patients_table<'a>(patients: &'a [Patient]) -> Element<'a, PatientsMessage> {
+pub fn patients_table(patients: &[Patient]) -> Element<'_, PatientsMessage> {
     let columns = vec![
         table::column(
             text("ID").font(Font {
@@ -415,8 +415,7 @@ pub fn patients_table<'a>(patients: &'a [Patient]) -> Element<'a, PatientsMessag
             |patient: &Patient| {
                 let date_str = patient
                     .birth_date
-                    .map(|d| d.format("%Y-%m-%d").to_string())
-                    .unwrap_or_else(|| "N/A".to_string());
+                    .map_or_else(|| "N/A".to_string(), |d| d.format("%Y-%m-%d").to_string());
                 Element::from(text(date_str))
             },
         )
@@ -482,7 +481,7 @@ pub fn patients_table<'a>(patients: &'a [Patient]) -> Element<'a, PatientsMessag
 // ADD PATIENT FORM
 // =================
 
-pub fn add_patient_form<'a>(draft: &'a DraftPatient) -> Element<'a, PatientsMessage> {
+pub fn add_patient_form(draft: &DraftPatient) -> Element<'_, PatientsMessage> {
     let title = text("Patient Details").size(24);
 
     let name_input = text_input("Full Name", &draft.name)

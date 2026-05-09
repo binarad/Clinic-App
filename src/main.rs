@@ -5,6 +5,7 @@ use crate::components::sidebar::{self, Tab};
 use crate::views::appointments::{AppointmentsMessage, AppointmentsTab};
 use crate::views::dashboard::{DashboardMessage, DashboardTab};
 use crate::views::employees::{EmployeesMessage, EmployeesTab};
+use crate::views::medical_records::{MedicalRecordsTab, RecordsMessage};
 use crate::views::patients::{PatientsMessage, PatientsTab};
 use crate::views::registry::{RegistryMessage, RegistryTab};
 
@@ -21,6 +22,7 @@ enum Message {
     PatientView(PatientsMessage),
     AppointmentView(AppointmentsMessage),
     RegistryView(RegistryMessage),
+    RecordsView(RecordsMessage),
 }
 
 pub struct ClinicApp {
@@ -29,6 +31,7 @@ pub struct ClinicApp {
     pub employees_tab: EmployeesTab,
     pub appointments_tab: AppointmentsTab,
     pub registry_tab: RegistryTab,
+    pub records_tab: MedicalRecordsTab,
 
     pub active_tab: Tab,
 }
@@ -41,6 +44,7 @@ impl ClinicApp {
             employees_tab: EmployeesTab::new(),
             appointments_tab: AppointmentsTab::new(),
             registry_tab: RegistryTab::new(),
+            records_tab: MedicalRecordsTab::new(),
 
             active_tab: Tab::Dashboard,
         }
@@ -52,12 +56,12 @@ impl ClinicApp {
                 self.active_tab = new_tab;
             }
 
-            // DASHBOARD VIEW
+            // Dashboard View
             Message::DashboardView(msg) => {
                 return self.dashboard_tab.update(msg).map(Message::DashboardView);
             }
 
-            // EMPLOYEES VIEW
+            // Employees View
             Message::EmployeeView(msg) => {
                 let needs_registry_refresh = matches!(
                     &msg,
@@ -79,12 +83,12 @@ impl ClinicApp {
                 return task;
             }
 
-            // PATIENTS VIEW
+            // Patients View
             Message::PatientView(msg) => {
                 return self.patients_tab.update(msg).map(Message::PatientView);
             }
 
-            // APPOINTMENTS VIEW
+            // Appointments View
             Message::AppointmentView(msg) => {
                 let needs_dash_refresh = matches!(
                     &msg,
@@ -103,9 +107,14 @@ impl ClinicApp {
                 return task;
             }
 
-            // REGISTRY VIEW
+            // Registry View
             Message::RegistryView(msg) => {
                 return self.registry_tab.update(msg).map(Message::RegistryView);
+            }
+
+            // Medical Records View
+            Message::RecordsView(msg) => {
+                return self.records_tab.update(msg).map(Message::RecordsView);
             }
         }
         iced::Task::none()
@@ -124,6 +133,7 @@ impl ClinicApp {
                 .view(&self.patients_tab.patients, &self.employees_tab.employees)
                 .map(Message::AppointmentView),
             Tab::Registry => self.registry_tab.view().map(Message::RegistryView),
+            Tab::MedicalRecord => self.records_tab.view().map(Message::RecordsView),
         };
 
         let main_content = container(content_view)

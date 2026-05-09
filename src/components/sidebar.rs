@@ -10,12 +10,14 @@ pub enum Tab {
     Employees,
     Appointments,
     Registry,
+    MedicalRecord,
 }
 #[derive(Debug, Clone)]
 pub enum Message {
     SelectedTab(Tab),
 }
 
+#[must_use] 
 pub fn view(active_tab: &Tab) -> Element<'_, Message> {
     let tabs = [
         (Tab::Dashboard, "Dashboard"),
@@ -23,6 +25,7 @@ pub fn view(active_tab: &Tab) -> Element<'_, Message> {
         (Tab::Employees, "Employees"),
         (Tab::Appointments, "Appointments"),
         (Tab::Registry, "Registry"),
+        (Tab::MedicalRecord, "Medical Records"),
     ];
 
     let mut sidebar_column = column!().spacing(10.0).padding(20.0);

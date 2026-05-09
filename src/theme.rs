@@ -58,6 +58,7 @@ pub const ROLE_REGISTRAR_BG: Color = Color::from_rgb8(126, 34, 206);
 // =====================
 
 // Style for the main application canvas
+#[must_use] 
 pub fn main_background(_theme: &Theme) -> container::Style {
     container::Style {
         text_color: Some(NAVY_SLATE),
@@ -68,6 +69,7 @@ pub fn main_background(_theme: &Theme) -> container::Style {
 }
 
 // Style for data tables and elevated UI cards
+#[must_use] 
 pub fn white_card(_theme: &Theme) -> container::Style {
     container::Style {
         text_color: Some(NAVY_SLATE),
@@ -82,6 +84,7 @@ pub fn white_card(_theme: &Theme) -> container::Style {
 }
 
 // Style for primary action buttons (e.g., "+ New Appointment")
+#[must_use] 
 pub fn primary_button(_theme: &Theme, status: button::Status) -> button::Style {
     match status {
         button::Status::Hovered | button::Status::Pressed => button::Style {
@@ -116,6 +119,7 @@ pub fn primary_button(_theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
+#[must_use] 
 pub fn secondary_button(_theme: &Theme, status: button::Status) -> button::Style {
     match status {
         button::Status::Active => button::Style {
@@ -165,6 +169,7 @@ pub fn secondary_button(_theme: &Theme, status: button::Status) -> button::Style
 // =====================
 
 // Style for semantic status badges (e.g., "Completed")
+#[must_use] 
 pub fn badge_completed(_theme: &Theme) -> container::Style {
     container::Style {
         text_color: Some(STATUS_COMPLETED_TEXT),
@@ -177,6 +182,7 @@ pub fn badge_completed(_theme: &Theme) -> container::Style {
     }
 }
 
+#[must_use] 
 pub fn badge_no_show(_theme: &Theme) -> container::Style {
     container::Style {
         text_color: Some(STATUS_NO_SHOW_TEXT),
@@ -189,6 +195,7 @@ pub fn badge_no_show(_theme: &Theme) -> container::Style {
     }
 }
 
+#[must_use] 
 pub fn badge_sheduled(_theme: &Theme) -> container::Style {
     container::Style {
         text_color: Some(STATUS_SCHEDULED_TEXT),
@@ -205,6 +212,7 @@ pub fn badge_sheduled(_theme: &Theme) -> container::Style {
 //      ROLE BADGES
 // =====================
 
+#[must_use] 
 pub fn badge_doctor(_theme: &Theme) -> container::Style {
     container::Style {
         text_color: Some(CLEAN_WHITE),
@@ -217,6 +225,7 @@ pub fn badge_doctor(_theme: &Theme) -> container::Style {
     }
 }
 
+#[must_use] 
 pub fn badge_nurse(_theme: &Theme) -> container::Style {
     container::Style {
         text_color: Some(CLEAN_WHITE),
@@ -229,6 +238,7 @@ pub fn badge_nurse(_theme: &Theme) -> container::Style {
     }
 }
 
+#[must_use] 
 pub fn badge_admin(_theme: &Theme) -> container::Style {
     container::Style {
         text_color: Some(CLEAN_WHITE),
@@ -241,6 +251,7 @@ pub fn badge_admin(_theme: &Theme) -> container::Style {
     }
 }
 
+#[must_use] 
 pub fn badge_registrar(_theme: &Theme) -> container::Style {
     container::Style {
         text_color: Some(CLEAN_WHITE),

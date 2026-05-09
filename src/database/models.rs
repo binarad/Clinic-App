@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
-use crate::database::schema::*;
+use crate::database::schema::{patient, employee, doctor, registry, medical_record, record_entry, appointment};
 
 // ----------------------------------------
 // PATIENT
@@ -93,7 +93,7 @@ pub struct NewRegistryWorker {
 // ----------------------------------------
 // MEDICAL RECORD
 // ----------------------------------------
-#[derive(Queryable, Selectable, Debug)]
+#[derive(Queryable, Selectable, Insertable, Clone, Debug)]
 #[diesel(table_name = medical_record)]
 pub struct MedicalRecord {
     pub record_number: i32, // PK, never null
@@ -104,7 +104,6 @@ pub struct MedicalRecord {
 #[derive(Insertable)]
 #[diesel(table_name = medical_record)]
 pub struct NewMedicalRecord {
-    // record_number omitted (AUTOINCREMENT)
     pub creation_date: Option<NaiveDateTime>,
     pub patient_id: i32,
 }
@@ -112,26 +111,25 @@ pub struct NewMedicalRecord {
 // ----------------------------------------
 // RECORD ENTRY
 // ----------------------------------------
-#[derive(Queryable, Selectable, Debug)]
+#[derive(Queryable, Selectable, Insertable, Clone, Debug)]
 #[diesel(table_name = record_entry)]
 pub struct RecordEntry {
-    pub entry_id: i32,      // PK, never null
-    pub record_number: i32, // NOT NULL
+    pub entry_id: i32,
+    pub record_number: i32,
     pub entry_number: Option<f64>,
     pub entry_date: Option<NaiveDateTime>,
     pub diagnosis: Option<String>,
     pub complaints: Option<String>,
 }
 
-#[derive(Insertable)]
+#[derive(Insertable, Clone, Debug)]
 #[diesel(table_name = record_entry)]
-pub struct NewRecordEntry<'a> {
-    // entry_id omitted (AUTOINCREMENT)
+pub struct NewRecordEntry {
     pub record_number: i32,
     pub entry_number: Option<f64>,
     pub entry_date: Option<NaiveDateTime>,
-    pub diagnosis: Option<&'a str>,
-    pub complaints: Option<&'a str>,
+    pub diagnosis: Option<String>,
+    pub complaints: Option<String>,
 }
 
 // ----------------------------------------

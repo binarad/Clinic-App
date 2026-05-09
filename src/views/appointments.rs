@@ -3,7 +3,7 @@ use crate::components::shared::search_bar::search_bar;
 use crate::database::models::{Appointment, Employee, Patient};
 use crate::database::operations::{
     AppointmentPayload, delete_appointment_db, fetch_appointments_db, fetch_registry_joined_db,
-    insert_appointment_db,
+    insert_appointment_db, update_appointment_db,
 };
 use crate::theme;
 
@@ -12,7 +12,7 @@ use iced::{Alignment, Element, Font, Length};
 use iced_aw::helpers::date_picker;
 
 const STATUS_OPTIONS: &[&str] = &["Scheduled", "Completed", "Cancelled", "No Show"];
-const ITEMS_PER_PAGE: usize = 10;
+const ITEMS_PER_PAGE: usize = 14;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelectOption {
@@ -113,6 +113,7 @@ pub enum AppointmentsMessage {
 // COMPONENT LOGIC
 // ==========================================
 impl AppointmentsTab {
+    #[must_use] 
     pub fn new() -> Self {
         let mut tab = Self {
             appointments: fetch_appointments_db(),
@@ -334,8 +335,7 @@ impl AppointmentsTab {
                             let registry_id = tokio::task::spawn_blocking(|| {
                                 fetch_registry_joined_db()
                                     .first()
-                                    .map(|(_, r)| r.employee_id)
-                                    .unwrap_or(1)
+                                    .map_or(1, |(_, r)| r.employee_id)
                             })
                             .await
                             .unwrap_or(1);
@@ -354,7 +354,49 @@ impl AppointmentsTab {
                         AppointmentsMessage::AppointmentAdded,
                     )
                 }
-                Some(AppointmentModal::Edit { .. }) => iced::Task::none(),
+                Some(AppointmentModal::Edit { target_id, draft }) => {
+                    if draft.patient_id.is_none()
+                        || draft.doctor_id.is_none()
+                        || draft.date.is_empty()
+                    {
+                        return iced::Task::none();
+                    }
+
+                    let parsed_date = chrono::NaiveDate::parse_from_str(&draft.date, "%Y-%m-%d")
+                        .ok()
+                        .and_then(|d| d.and_hms_opt(0, 0, 0));
+
+                    let payload_draft = draft.clone();
+                    let target = *target_id;
+                    self.is_saving = true;
+
+                    iced::Task::perform(
+                        async move {
+                            // We grab the registry ID exactly like we do for inserting
+                            let registry_id = tokio::task::spawn_blocking(|| {
+                                fetch_registry_joined_db()
+                                    .first()
+                                    .map_or(1, |(_, r)| r.employee_id)
+                            })
+                            .await
+                            .unwrap_or(1);
+
+                            let payload = AppointmentPayload {
+                                patient_id: payload_draft.patient_id.unwrap(),
+                                doctor_id: payload_draft.doctor_id.unwrap(),
+                                registry_id,
+                                date: parsed_date,
+                                time: payload_draft.time,
+                                status: payload_draft.status,
+                                reason: payload_draft.reason,
+                            };
+
+                            // Call the update database function!
+                            update_appointment_db(target, payload).await
+                        },
+                        AppointmentsMessage::AppointmentUpdated,
+                    )
+                }
                 _ => iced::Task::none(),
             },
             AppointmentsMessage::AppointmentAdded(result) => {
@@ -429,7 +471,7 @@ impl AppointmentsTab {
         }));
 
         let mut status_options = vec!["All Statuses".to_string()];
-        status_options.extend(STATUS_OPTIONS.iter().map(|s| s.to_string()));
+        status_options.extend(STATUS_OPTIONS.iter().map(std::string::ToString::to_string));
 
         // 2. Determine currently selected items
         let selected_doctor = doctor_options
@@ -670,9 +712,7 @@ fn appointments_table<'a>(
             }),
             |a: &Appointment| {
                 Element::from(text(
-                    a.appointment_date
-                        .map(|d| d.format("%Y-%m-%d").to_string())
-                        .unwrap_or_else(|| "N/A".to_string()),
+                    a.appointment_date.map_or_else(|| "N/A".to_string(), |d| d.format("%Y-%m-%d").to_string()),
                 ))
             },
         )
@@ -686,9 +726,7 @@ fn appointments_table<'a>(
                 Element::from(text(
                     patients
                         .iter()
-                        .find(|p| p.patient_id == a.patient_id)
-                        .map(|p| p.full_name.clone())
-                        .unwrap_or_else(|| "Unknown".to_string()),
+                        .find(|p| p.patient_id == a.patient_id).map_or_else(|| "Unknown".to_string(), |p| p.full_name.clone()),
                 ))
             },
         )
@@ -702,9 +740,7 @@ fn appointments_table<'a>(
                 Element::from(text(
                     employees
                         .iter()
-                        .find(|e| e.employee_id == a.doctor_id)
-                        .map(|e| e.full_name.clone())
-                        .unwrap_or_else(|| "Unknown".to_string()),
+                        .find(|e| e.employee_id == a.doctor_id).map_or_else(|| "Unknown".to_string(), |e| e.full_name.clone()),
                 ))
             },
         )

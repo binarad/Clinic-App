@@ -2,7 +2,8 @@ use crate::components::shared::pagination::pagination;
 use crate::components::shared::search_bar::search_bar;
 use crate::database::models::Employee;
 use crate::database::operations::{
-    delete_employee, fetch_all_employees_db, insert_doctor_db, insert_registry_worker_db,
+    delete_employee, fetch_all_employees_db, insert_doctor_db, insert_employee_db,
+    insert_registry_worker_db, update_employee_db,
 };
 use crate::theme;
 
@@ -10,7 +11,7 @@ use iced::widget::{Space, button, column, container, pick_list, row, table, text
 use iced::{Alignment, Element, Font, Length};
 
 const ROLE_OPTIONS: &[&str] = &["Doctor", "Registry", "General Staff"];
-const ITEMS_PER_PAGE: usize = 10;
+const ITEMS_PER_PAGE: usize = 14;
 
 // ==========================================
 // STATE & DRAFTS
@@ -83,6 +84,7 @@ pub enum EmployeesMessage {
 // COMPONENT LOGIC
 // ==========================================
 impl EmployeesTab {
+    #[must_use] 
     pub fn new() -> Self {
         let mut tab = Self {
             employees: fetch_all_employees_db(),
@@ -242,11 +244,37 @@ impl EmployeesTab {
                             },
                         )
                     } else {
-                        println!("General staff insert not yet implemented!");
-                        iced::Task::none()
+                        iced::Task::perform(
+                            insert_employee_db(
+                                role,
+                                draft.name.clone(),
+                                draft.phone.clone(),
+                                draft.email.clone(),
+                            ),
+                            EmployeesMessage::EmployeeAdded,
+                        )
                     }
                 }
-                Some(EmployeeModal::Edit { .. }) => iced::Task::none(),
+                Some(EmployeeModal::Edit { target_id, draft }) => {
+                    if draft.name.trim().is_empty() || draft.role.is_none() {
+                        return iced::Task::none();
+                    }
+
+                    let role = draft.role.clone().unwrap();
+                    let id = *target_id;
+                    let name = draft.name.clone();
+                    let phone = draft.phone.clone();
+                    let email = draft.email.clone();
+
+                    self.is_saving = true;
+
+                    // Note: Your update_employee_db safely handles the base table.
+                    // Updating Subtypes (Doctor/Registry) is incredibly complex in SQL,
+                    // so we are just sticking to updating the base contact info here!
+                    iced::Task::perform(update_employee_db(id, role, name, phone, email), |res| {
+                        EmployeesMessage::EmployeeUpdated(res)
+                    })
+                }
                 _ => iced::Task::none(),
             },
             EmployeesMessage::EmployeeAdded(result) => {
@@ -362,7 +390,7 @@ impl EmployeesTab {
 // ==========================================
 // UI HELPERS
 // ==========================================
-fn add_employee_form<'a>(draft: &'a DraftEmployee) -> Element<'a, EmployeesMessage> {
+fn add_employee_form(draft: &DraftEmployee) -> Element<'_, EmployeesMessage> {
     let title = text("Staff Details").size(24);
 
     let name_input = text_input("Full Name", &draft.name)
@@ -448,7 +476,7 @@ fn add_employee_form<'a>(draft: &'a DraftEmployee) -> Element<'a, EmployeesMessa
         .into()
 }
 
-fn employees_table<'a>(employees: &'a [Employee]) -> Element<'a, EmployeesMessage> {
+fn employees_table(employees: &[Employee]) -> Element<'_, EmployeesMessage> {
     let columns = vec![
         table::column(
             text("ID").font(Font {
