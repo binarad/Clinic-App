@@ -1,8 +1,9 @@
 // HERE WILL BE ALL DATABASE MAGIC THINGS
 use crate::database::models::{
-    Appointment, Employee, NewAppointment, NewEmployee, NewPatient, Patient,
+    Appointment, Doctor, Employee, NewAppointment, NewDoctor, NewEmployee, NewPatient,
+    NewRegistryWorker, Patient, RegistryWorker,
 };
-use crate::database::schema::{appointment, employee, patient};
+use crate::database::schema::{appointment, doctor, employee, patient, registry};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use dotenvy::dotenv;
@@ -58,6 +59,122 @@ pub async fn insert_employee_db(
     .map_err(|e| format!("Task panicked: {}", e))?
 }
 
+pub async fn insert_doctor_db(
+    full_name: String,
+    phone: String,
+    email: String,
+    specialty: String,
+    office: String,
+) -> Result<(Employee, Doctor), String> {
+    tokio::task::spawn_blocking(move || {
+        let mut conn = establish_connection();
+
+        let phone_opt = if phone.trim().is_empty() {
+            None
+        } else {
+            Some(phone.as_str())
+        };
+        let email_opt = if email.trim().is_empty() {
+            None
+        } else {
+            Some(email.as_str())
+        };
+        let office_opt = if office.trim().is_empty() {
+            None
+        } else {
+            Some(office.as_str())
+        };
+
+        // Start Transaction
+        conn.transaction::<_, diesel::result::Error, _>(|conn| {
+            let new_emp = NewEmployee {
+                full_name: &full_name,
+                phone: phone_opt,
+                role: "Doctor",
+                email: email_opt,
+            };
+
+            let inserted_emp: Employee = diesel::insert_into(employee::table)
+                .values(&new_emp)
+                .returning(Employee::as_returning())
+                .get_result(conn)?;
+
+            // Grap the auto-generatd employee_id and insert the Doctor
+            let new_doc = NewDoctor {
+                employee_id: inserted_emp.employee_id,
+                specialty: &specialty,
+                office: office_opt,
+            };
+
+            let inserted_doc: Doctor = diesel::insert_into(doctor::table)
+                .values(&new_doc)
+                .returning(Doctor::as_returning())
+                .get_result(conn)?;
+
+            Ok((inserted_emp, inserted_doc))
+        })
+        .map_err(|e| format!("Transaction failed: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task panicked: {}", e))?
+}
+
+pub async fn insert_registry_worker_db(
+    full_name: String,
+    phone: String,
+    email: String,
+    window_number: Option<f64>,
+) -> Result<(Employee, RegistryWorker), String> {
+    tokio::task::spawn_blocking(move || {
+        let mut conn = establish_connection();
+
+        // Format optional fields
+        let phone_opt = if phone.trim().is_empty() {
+            None
+        } else {
+            Some(phone.as_str())
+        };
+        let email_opt = if email.trim().is_empty() {
+            None
+        } else {
+            Some(email.as_str())
+        };
+
+        // START TRANSACTION
+        conn.transaction::<_, diesel::result::Error, _>(|conn| {
+            // 1. Insert the Base Employee
+            let new_emp = NewEmployee {
+                full_name: &full_name,
+                phone: phone_opt,
+                role: "Registry", // Hardcoded safely!
+                email: email_opt,
+            };
+
+            let inserted_emp: Employee = diesel::insert_into(employee::table)
+                .values(&new_emp)
+                .returning(Employee::as_returning())
+                .get_result(conn)?;
+
+            // 2. Grab the auto-generated employee_id and insert the Registry Worker
+            let new_reg = NewRegistryWorker {
+                employee_id: inserted_emp.employee_id, // Safely linked!
+                window_number,
+            };
+
+            let inserted_reg: RegistryWorker = diesel::insert_into(registry::table)
+                .values(&new_reg)
+                .returning(RegistryWorker::as_returning())
+                .get_result(conn)?;
+
+            // 3. Return both structs
+            Ok((inserted_emp, inserted_reg))
+        })
+        .map_err(|e| format!("Transaction failed: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task panicked: {}", e))?
+}
+
 pub fn fetch_employees_db() -> Vec<Employee> {
     use crate::database::schema::employee::dsl::*;
 
@@ -68,6 +185,28 @@ pub fn fetch_employees_db() -> Vec<Employee> {
         .select(Employee::as_select())
         .load(connection)
         .expect("Error loading employee")
+}
+
+pub fn fetch_doctors_joined_db() -> Vec<(Employee, Doctor)> {
+    let mut conn = establish_connection();
+
+    employee::table
+        .inner_join(doctor::table)
+        .select((Employee::as_select(), Doctor::as_select()))
+        .load::<(Employee, Doctor)>(&mut conn)
+        .unwrap_or_default()
+}
+
+/// Fetches all Registry Workers joined with their Base Employee data
+pub fn fetch_registry_joined_db() -> Vec<(Employee, RegistryWorker)> {
+    let mut conn = establish_connection();
+
+    employee::table
+        .inner_join(registry::table)
+        // TELL DIESEL EXACTLY HOW TO MAP THE COLUMNS:
+        .select((Employee::as_select(), RegistryWorker::as_select()))
+        .load::<(Employee, RegistryWorker)>(&mut conn)
+        .unwrap_or_default()
 }
 
 pub async fn update_employee_db(
@@ -338,6 +477,7 @@ pub async fn delete_appointment_db(target_id: i32) -> Result<usize, String> {
     .await
     .map_err(|e| format!("Task panicked: {}", e))?
 }
+
 pub fn establish_connection() -> SqliteConnection {
     dotenv().ok();
 

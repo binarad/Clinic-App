@@ -6,8 +6,9 @@ use crate::database::schema::*;
 // ----------------------------------------
 // PATIENT
 // ----------------------------------------
-#[derive(Queryable, Selectable, Debug, Clone)]
+#[derive(Queryable, Selectable, Identifiable, Debug, Clone)]
 #[diesel(table_name = patient)]
+#[diesel(primary_key(patient_id))]
 pub struct Patient {
     pub patient_id: i32,   // PK, never null
     pub full_name: String, // NOT NULL
@@ -19,7 +20,6 @@ pub struct Patient {
 #[derive(Insertable)]
 #[diesel(table_name = patient)]
 pub struct NewPatient<'a> {
-    // patient_id omitted (AUTOINCREMENT)
     pub full_name: &'a str,
     pub birth_date: Option<NaiveDateTime>,
     pub phone: Option<&'a str>,
@@ -29,9 +29,10 @@ pub struct NewPatient<'a> {
 // ----------------------------------------
 // EMPLOYEE
 // ----------------------------------------
-#[derive(Queryable, Selectable, Debug, Clone)]
+#[derive(Queryable, Selectable, Identifiable, Debug, Clone)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 #[diesel(table_name = employee)]
+#[diesel(primary_key(employee_id))]
 pub struct Employee {
     pub employee_id: i32, // PK, never null
     pub role: String,
@@ -43,7 +44,6 @@ pub struct Employee {
 #[derive(Insertable)]
 #[diesel(table_name = employee)]
 pub struct NewEmployee<'a> {
-    // employee_id omitted (AUTOINCREMENT)
     pub role: &'a str,
     pub full_name: &'a str,
     pub phone: Option<&'a str>,
@@ -53,8 +53,10 @@ pub struct NewEmployee<'a> {
 // ----------------------------------------
 // DOCTOR
 // ----------------------------------------
-#[derive(Queryable, Selectable, Debug)]
+#[derive(Queryable, Selectable, Identifiable, Associations, Debug, Clone)]
 #[diesel(table_name = doctor)]
+#[diesel(belongs_to(Employee, foreign_key = employee_id))]
+#[diesel(primary_key(employee_id))]
 pub struct Doctor {
     pub employee_id: i32,  // PK, never null
     pub specialty: String, // NOT NULL
@@ -64,7 +66,7 @@ pub struct Doctor {
 #[derive(Insertable)]
 #[diesel(table_name = doctor)]
 pub struct NewDoctor<'a> {
-    pub employee_id: i32, // Included! Not autoincremented here; inherited from Employee
+    pub employee_id: i32,
     pub specialty: &'a str,
     pub office: Option<&'a str>,
 }
@@ -72,17 +74,18 @@ pub struct NewDoctor<'a> {
 // ----------------------------------------
 // REGISTRY
 // ----------------------------------------
-#[derive(Queryable, Selectable, Debug)]
+#[derive(Queryable, Selectable, Identifiable, Associations, Debug, Clone)]
 #[diesel(table_name = registry)]
-pub struct Registry {
+#[diesel(belongs_to(Employee, foreign_key = employee_id))]
+#[diesel(primary_key(employee_id))]
+pub struct RegistryWorker {
     pub employee_id: i32, // PK, never null
     pub window_number: Option<f64>,
 }
 
-// Note: No `<'a>` lifetime needed here because there are no string references
 #[derive(Insertable)]
 #[diesel(table_name = registry)]
-pub struct NewRegistry {
+pub struct NewRegistryWorker {
     pub employee_id: i32, // Included! Not autoincremented here; inherited from Employee
     pub window_number: Option<f64>,
 }
@@ -134,15 +137,19 @@ pub struct NewRecordEntry<'a> {
 // ----------------------------------------
 // APPOINTMENT
 // ----------------------------------------
-#[derive(Queryable, Selectable, Debug, Clone)]
+#[derive(Queryable, Selectable, Identifiable, Associations, Debug, Clone)]
+#[diesel(belongs_to(Patient, foreign_key = patient_id))]
+#[diesel(belongs_to(Doctor, foreign_key = doctor_id))]
+#[diesel(belongs_to(RegistryWorker, foreign_key = registry_id))]
 #[diesel(table_name = appointment)]
+#[diesel(primary_key(appointment_id))]
 pub struct Appointment {
-    pub appointment_id: i32, // PK, never null
+    pub appointment_id: i32,
     pub appointment_date: Option<NaiveDateTime>,
     pub appointment_time: Option<String>,
-    pub patient_id: i32,  // NOT NULL
-    pub doctor_id: i32,   // NOT NULL
-    pub registry_id: i32, // NOT NULL
+    pub patient_id: i32,
+    pub doctor_id: i32,
+    pub registry_id: i32,
     pub status: Option<String>,
     pub reason: Option<String>,
 }
@@ -150,7 +157,6 @@ pub struct Appointment {
 #[derive(Insertable)]
 #[diesel(table_name = appointment)]
 pub struct NewAppointment<'a> {
-    // appointment_id omitted (AUTOINCREMENT)
     pub appointment_date: Option<NaiveDateTime>,
     pub appointment_time: Option<&'a str>,
     pub patient_id: i32,
