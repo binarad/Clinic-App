@@ -1,0 +1,8 @@
+-- This file should undo anything in `up.sql`
+DROP TABLE IF EXISTS patient CASCADE;
+DROP TABLE IF EXISTS employee CASCADE;
+DROP TABLE IF EXISTS doctor CASCADE;
+DROP TABLE IF EXISTS registry CASCADE;
+DROP TABLE IF EXISTS medical_record CASCADE;
+DROP TABLE IF EXISTS record_entry CASCADE;
+DROP TABLE IF EXISTS appointment CASCADE;
