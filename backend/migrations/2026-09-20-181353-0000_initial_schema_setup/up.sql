@@ -37,25 +37,15 @@ CREATE TABLE medical_record (
     REFERENCES patient (patient_id) ON DELETE CASCADE
 );
 
-CREATE TABLE record_entry (
-    entry_id SERIAL PRIMARY KEY,
-    record_number INTEGER NOT NULL,
-    entry_number INTEGER,
-    entry_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    diagnosis VARCHAR(255),
-    complaints VARCHAR(1000),
-    CONSTRAINT uq_record_entry UNIQUE (record_number, entry_number),
-    CONSTRAINT fk_entry_record FOREIGN KEY (record_number)
-    REFERENCES medical_record (record_number) ON DELETE CASCADE
-);
-
+-- Таблица создается раньше record_entry для работы FOREIGN KEY
 CREATE TABLE appointment (
     appointment_id SERIAL PRIMARY KEY,
-    appointment_time TIMESTAMP NOT NULL, -- Combined date & time of the actual visit
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- When the booking was entered
+    appointment_time TIMESTAMP NOT NULL, 
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, 
     patient_id INTEGER NOT NULL,
     doctor_id INTEGER NOT NULL,
-    registry_id INTEGER NOT NULL,
+    registry_id INTEGER, -- Убрано ограничение NOT NULL
+    is_online_booking BOOLEAN DEFAULT false, -- Аудиторский след для онлайн-записей
     status VARCHAR(50),
     reason TEXT,
     CONSTRAINT fk_appointment_patient FOREIGN KEY (patient_id)
@@ -64,4 +54,20 @@ CREATE TABLE appointment (
     REFERENCES doctor (employee_id) ON DELETE CASCADE,
     CONSTRAINT fk_appointment_registry FOREIGN KEY (registry_id)
     REFERENCES registry (employee_id) ON DELETE CASCADE
+);
+
+CREATE TABLE record_entry (
+    entry_id SERIAL PRIMARY KEY,
+    record_number INTEGER NOT NULL,
+    appointment_id INTEGER UNIQUE, -- Связь 1:1 с конкретным приемом
+    entry_number INTEGER,
+    entry_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    diagnosis VARCHAR(255),
+    complaints VARCHAR(1000),
+    notes TEXT, -- Поле для внутренних комментариев врача
+    CONSTRAINT uq_record_entry UNIQUE (record_number, entry_number),
+    CONSTRAINT fk_entry_record FOREIGN KEY (record_number)
+    REFERENCES medical_record (record_number) ON DELETE CASCADE,
+    CONSTRAINT fk_entry_appointment FOREIGN KEY (appointment_id)
+    REFERENCES appointment (appointment_id) ON DELETE SET NULL
 );

@@ -2,24 +2,12 @@ use actix_web::{App, HttpResponse, HttpServer, Responder, error, get, post, web}
 
 use actix_web::middleware::Logger;
 
-// use crate::database::operations::establish_connection;
 use diesel::r2d2;
 
 pub mod database;
 
 type DbPool = r2d2::Pool<r2d2::ConnectionManager<PgConnection>>;
 
-#[get("/")]
-async fn hello() -> impl Responder {
-    HttpResponse::Ok().body("Hello world!")
-}
-
-#[post("/echo")]
-async fn echo(req_body: String) -> impl Responder {
-    HttpResponse::Ok().body(req_body)
-}
-
-// use database::models::*;
 use diesel::prelude::*;
 
 #[get("/patients")]
@@ -38,25 +26,7 @@ async fn get_patients(pool: web::Data<DbPool>) -> actix_web::Result<impl Respond
         Some(p) => HttpResponse::Ok().json(p),
         None => HttpResponse::NotFound().body("No patients found"),
     })
-
-    // let name = req.match_info().get("name").unwrap_or("World");
-    // format!("Hello {}!", name)
-    // HttpResponse::Ok().json(results)
 }
-
-// #[post("/patient")]
-// async fn create_patient(conn: &mut PgConnection, new_patient: NewPatient<'_>) -> impl Responder {
-//     use database::schema::patient;
-
-//     let new_patient = diesel::insert_into(patient::table)
-//         .values(&new_patient)
-//         .returning(Patient::as_returning())
-//         .get_result(conn)
-//         .expect("Error creating a new patient");
-
-//     HttpResponse::Ok().json(new_patient)
-// }
-// TODO
 
 #[post("/patient")]
 async fn create_patient(
@@ -80,10 +50,11 @@ async fn create_patient(
     //     Err(_) => HttpResponse::InternalServerError().finish(), // Handles web::block thread join errors
     // }
 }
-//
-// async fn manual_hello() -> impl Responder {
-//     HttpResponse::Ok().body("Hey there!")
-// }
+
+#[get("/health_check")]
+async fn health_check() -> impl Responder {
+    HttpResponse::Ok()
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -100,7 +71,7 @@ async fn main() -> std::io::Result<()> {
             // Logger middleware emits a log record
             // for every incoming request.
             .wrap(Logger::default())
-            .service(echo)
+            .service(health_check)
             .service(get_patients)
             .service(create_patient)
         // .route("/hey", web::get().to(manual_hello))

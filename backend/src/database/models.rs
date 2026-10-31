@@ -1,4 +1,4 @@
-use chrono::NaiveDateTime;
+use chrono::NaiveDate;
 use diesel::prelude::*;
 use serde::Serialize;
 
@@ -16,7 +16,7 @@ use serde::Deserialize;
 pub struct Patient {
     pub patient_id: i32,   // PK, never null
     pub full_name: String, // NOT NULL
-    pub birth_date: Option<NaiveDateTime>,
+    pub birth_date: Option<NaiveDate>,
     pub phone: Option<String>,
     pub address: Option<String>,
 }
@@ -27,7 +27,7 @@ pub struct Patient {
 #[diesel(table_name = patient)]
 pub struct NewPatient {
     pub full_name: String,
-    pub birth_date: Option<NaiveDateTime>,
+    pub birth_date: Option<NaiveDate>,
     pub phone: Option<String>,
     pub address: Option<String>,
 }

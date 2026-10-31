@@ -658,6 +658,7 @@ use super::models;
 pub type DbError = Box<dyn std::error::Error + Send + Sync>;
 
 pub fn fetch_patients(conn: &mut PgConnection) -> Result<Option<Vec<models::Patient>>, DbError> {
+
     use crate::database::schema::patient::dsl::*;
 
     let patients = patient.load::<models::Patient>(conn).optional()?;
